@@ -228,8 +228,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (videoInput.files.length > 0) {
             const file = videoInput.files[0];
             
-            if (file.size > 1024 * 1024 * 1024) {
-                alert('File is too large. Max size is 1GB.');
+            if (file.size > 5 * 1024 * 1024 * 1024) {  // 5GB limit
+                alert('File is too large. Max size is 5GB.');
                 videoInput.value = '';
                 return;
             }
