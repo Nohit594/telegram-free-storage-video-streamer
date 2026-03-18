@@ -5,6 +5,16 @@ const fs = require('fs');
 const path = require('path');
 const Video = require('../models/Video');
 
+// Helper function to check video access
+const canAccessVideo = (video, req) => {
+    // If video is public, anyone can access
+    if (video.isPublic) return true;
+    // If user is authenticated and owns the video, they can access
+    if (req.user && video.userId.toString() === req.user.id) return true;
+    // Otherwise, no access
+    return false;
+};
+
 exports.uploadVideo = async (req, res) => {
     let localFilePath = null;
     let hlsData = null;
@@ -195,8 +205,8 @@ exports.getVideoById = async (req, res) => {
             return res.status(404).json({ error: 'Video not found' });
         }
         
-        // Check ownership - user can only access their own videos
-        if (video.userId.toString() !== req.user.id) {
+        // Check if video is public OR user owns it
+        if (!canAccessVideo(video, req)) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
         
@@ -280,8 +290,8 @@ exports.getThumbnail = async (req, res) => {
         
         if (!video || !video.thumbnailFileId) return res.status(404).end();
         
-        // Check ownership
-        if (video.userId.toString() !== req.user.id) {
+        // Check if video is public OR user owns it
+        if (!canAccessVideo(video, req)) {
             return res.status(403).end();
         }
         
@@ -291,6 +301,7 @@ exports.getThumbnail = async (req, res) => {
         const response = await axios.get(telegramFile.url, { responseType: 'stream' });
         response.data.pipe(res);
     } catch(e) {
+        console.error('Thumbnail error:', e.message);
         res.status(500).end();
     }
 };
@@ -305,8 +316,8 @@ exports.getPlaylist = async (req, res) => {
             return res.status(404).json({ error: 'Video not found' });
         }
         
-        // Check ownership
-        if (video.userId.toString() !== req.user.id) {
+        // Check if video is public OR user owns it
+        if (!canAccessVideo(video, req)) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
@@ -321,7 +332,7 @@ exports.getPlaylist = async (req, res) => {
         
         // We can just replace the .ts filename string with our routing URL
         video.chunks.forEach(chunk => {
-            const proxyUrl = `/api/videos/stream/${videoId}/chunk/${chunk.name}`;
+            const proxyUrl = `/api/videos/public/stream/${videoId}/chunk/${chunk.name}`;
             m3u8Content = m3u8Content.replace(chunk.name, proxyUrl);
         });
 
@@ -342,8 +353,8 @@ exports.getChunk = async (req, res) => {
 
         if (!video) return res.status(404).json({ error: 'Video not found' });
         
-        // Check ownership
-        if (video.userId.toString() !== req.user.id) {
+        // Check if video is public OR user owns it
+        if (!canAccessVideo(video, req)) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 

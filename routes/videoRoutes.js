@@ -30,6 +30,14 @@ const upload = multer({
 // Routes
 router.post('/upload', authMiddleware, upload.single('video'), videoController.uploadVideo);
 router.get('/', authMiddleware, videoController.getVideos);
+
+// Public routes (no auth required) - for shared videos
+router.get('/public/thumbnail/:videoId', videoController.getThumbnail);
+router.get('/public/stream/:videoId/master.m3u8', videoController.getPlaylist);
+router.get('/public/stream/:videoId/chunk/:chunkName', videoController.getChunk);
+router.get('/public/:videoId', videoController.getVideoById);
+
+// Protected routes (auth required)
 router.get('/thumbnail/:videoId', authMiddleware, videoController.getThumbnail);
 router.get('/stream/:videoId/master.m3u8', authMiddleware, videoController.getPlaylist);
 router.get('/stream/:videoId/chunk/:chunkName', authMiddleware, videoController.getChunk);
