@@ -27,13 +27,21 @@ exports.uploadVideo = async (req, res) => {
     let thumbPath = null;
     
     // Set timeout to be very long for FFmpeg processing
-    req.setTimeout(0); 
+    req.setTimeout(0);
+    
+    // Set response headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
 
     try {
         if (!req.file) {
-            return res.status(400).json({ error: 'No video file uploaded' });
+            console.error('No file uploaded');
+            res.write(`data: ${JSON.stringify({ error: 'No video file uploaded' })}\n\n`);
+            return res.end();
         }
 
+        console.log(`File received: ${req.file.originalname} (${req.file.size} bytes)`);
         const totalSize = req.file.size;
         let uploadedBytes = 0;
         let totalBytes = 0;
@@ -142,24 +150,21 @@ exports.uploadVideo = async (req, res) => {
         };
         videos.push(videoData);
         saveVideos(videos);
+        console.log(`Video saved successfully: ${videoData.filename} (ID: ${videoData.id})`);
+        console.log(`Total videos in database: ${videos.length}`);
 
         // 7. Cleanup local files
         cleanupTempFiles(localFilePath, thumbPath, hlsData.hlsFolder);
 
-        sendProgress('complete', 100, 'Upload complete!');
-        
         res.write(`data: ${JSON.stringify({ success: true, video: videoData })}\n\n`);
         res.end();
     } catch (error) {
         console.error("Upload process failed:", error);
+        console.error("Error details:", error.stack);
         cleanupTempFiles(localFilePath, thumbPath, hlsData?.hlsFolder);
         
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'Failed to process and upload video', details: error.message });
-        } else {
-            res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-            res.end();
-        }
+        res.write(`data: ${JSON.stringify({ error: error.message || 'Upload failed' })}\n\n`);
+        res.end();
     }
 };
 

@@ -245,6 +245,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (videoInput.files.length === 0) return;
 
         const file = videoInput.files[0];
+        console.log(`Starting upload: ${file.name} (${file.size} bytes)`);
+        
         const formData = new FormData();
         formData.append('video', file);
 
@@ -255,108 +257,100 @@ document.addEventListener('DOMContentLoaded', () => {
         progressContainer.classList.remove('hidden');
         progressText.textContent = 'Uploading to Server...';
         progressBar.style.width = '0%';
+        progressBar.style.background = '#4a90e2';
 
         const xhr = new XMLHttpRequest();
-        let uploadToServerComplete = false;
 
         xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) {
-                const percentComplete = Math.round((e.loaded / e.total) * 50);
+                const percentComplete = Math.round((e.loaded / e.total) * 30);
                 progressBar.style.width = percentComplete + '%';
-                
-                if (percentComplete === 50) {
-                    uploadToServerComplete = true;
-                    progressText.textContent = 'Upload complete! Starting transcoding...';
-                }
+                console.log(`File upload progress: ${percentComplete}%`);
             }
         });
 
         xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-                progressText.textContent = 'Upload and Conversion Complete!';
-                progressBar.style.background = '#2ea043';
-                
-                setTimeout(() => {
-                    uploadModal.classList.add('hidden');
-                    resetUploadState();
-                    fetchVideos();
-                }, 2000);
-            } else {
-                handleUploadError(xhr);
-            }
+            console.log(`Upload request completed with status: ${xhr.status}`);
         };
 
-        xhr.onerror = () => handleUploadError(xhr);
+        xhr.onerror = () => {
+            console.error('Upload request error:', xhr.statusText);
+            handleUploadError(xhr);
+        };
 
         xhr.open('POST', '/api/videos/upload', true);
         const token = localStorage.getItem('token');
         if (token) {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         }
-        xhr.setRequestHeader('Accept', 'text/event-stream');
         
-        let eventSource = null;
+        let lastProcessedLength = 0;
         
         xhr.onreadystatechange = () => {
-            if (xhr.readyState === 3 && xhr.status === 200) {
-                progressText.textContent = 'Processing video...';
-                progressBar.style.width = '50%';
+            if (xhr.readyState >= 3 && xhr.status === 200) {
+                console.log(`readyState: ${xhr.readyState}, responseText length: ${xhr.responseText.length}`);
                 
-                const processSSE = () => {
-                    const text = xhr.responseText;
-                    const lines = text.split('\n');
-                    
-                    lines.forEach(line => {
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.substring(6));
-                                
-                                if (data.error) {
-                                    progressText.textContent = 'Error: ' + data.error;
-                                    progressBar.style.background = '#e50914';
-                                    return;
-                                }
-                                
-                                if (data.success) {
-                                    progressText.textContent = 'Upload Complete!';
-                                    progressBar.style.background = '#2ea043';
-                                    progressBar.style.width = '100%';
-                                    
-                                    setTimeout(() => {
-                                        uploadModal.classList.add('hidden');
-                                        resetUploadState();
-                                        fetchVideos();
-                                    }, 2000);
-                                    return;
-                                }
-                                
-                                if (data.percent !== undefined) {
-                                    const mappedPercent = 50 + (data.percent / 100) * 50;
-                                    progressBar.style.width = mappedPercent + '%';
-                                    progressText.textContent = data.message || 'Processing...';
-                                    
-                                    if (data.phase === 'converting') {
-                                        progressBar.style.background = '#e5a909';
-                                    } else if (data.phase === 'uploading') {
-                                        progressBar.style.background = '#e50914';
-                                    } else if (data.phase === 'complete') {
-                                        progressBar.style.background = '#2ea043';
-                                    }
-                                }
-                            } catch (err) {
-                                console.log('SSE parse error:', err);
+                // Process only new data that hasn't been processed yet
+                const newData = xhr.responseText.substring(lastProcessedLength);
+                lastProcessedLength = xhr.responseText.length;
+                
+                const lines = newData.split('\n');
+                
+                lines.forEach(line => {
+                    if (line.trim().startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.substring(6);
+                            const data = JSON.parse(jsonStr);
+                            console.log('Received event:', data);
+                            
+                            if (data.error) {
+                                console.error('Server error:', data.error);
+                                progressText.textContent = 'Error: ' + data.error;
+                                progressBar.style.background = '#e50914';
+                                return;
                             }
+                            
+                            if (data.success) {
+                                console.log('Upload successful!');
+                                progressText.textContent = 'Upload Complete!';
+                                progressBar.style.background = '#2ea043';
+                                progressBar.style.width = '100%';
+                                
+                                setTimeout(() => {
+                                    uploadModal.classList.add('hidden');
+                                    resetUploadState();
+                                    fetchVideos();
+                                }, 2000);
+                                return;
+                            }
+                            
+                            if (data.percent !== undefined) {
+                                const mappedPercent = 30 + (data.percent / 100) * 70;
+                                progressBar.style.width = mappedPercent + '%';
+                                progressText.textContent = data.message || 'Processing...';
+                                
+                                if (data.phase === 'converting') {
+                                    progressBar.style.background = '#e5a909';
+                                } else if (data.phase === 'uploading') {
+                                    progressBar.style.background = '#e50914';
+                                } else if (data.phase === 'finalizing') {
+                                    progressBar.style.background = '#4a90e2';
+                                }
+                                console.log(`Progress: ${mappedPercent.toFixed(1)}% - ${data.message}`);
+                            }
+                        } catch (err) {
+                            console.log('SSE parse error:', err, 'Line:', line);
                         }
-                    });
-                };
-                
-                const checkInterval = setInterval(() => {
-                    if (xhr.readyState === 4) {
-                        clearInterval(checkInterval);
-                    } else {
-                        processSSE();
                     }
-                }, 100);
+                });
+                
+                // Handle completion on readyState 4
+                if (xhr.readyState === 4) {
+                    console.log('Upload request completed');
+                    if (xhr.status !== 200) {
+                        handleUploadError(xhr);
+                    }
+                }
             }
         };
         
@@ -364,12 +358,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleUploadError(xhr) {
+        console.error('Upload error:', xhr.status, xhr.statusText);
         progressText.textContent = 'Upload Failed.';
         progressBar.style.background = '#e50914';
         try {
             const res = JSON.parse(xhr.responseText);
-            if(res.error) progressText.textContent = res.error;
-        } catch(e) {}
+            if(res.error) {
+                progressText.textContent = 'Error: ' + res.error;
+                console.error('Error from server:', res.error);
+            }
+            if(res.details) console.error('Error details:', res.details);
+        } catch(e) {
+            console.error('Could not parse error response:', xhr.responseText);
+        }
         
         setTimeout(resetUploadState, 3000);
     }
@@ -387,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     // Fetch & Display Videos in Database Format
     async function fetchVideos() {
+        console.log('Fetching videos from server...');
         videosTableBody.innerHTML = '<tr><td colspan="6" class="loading-row">Loading from database...</td></tr>';
         
         try {
@@ -406,6 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             allVideos = await res.json();
+            console.log(`Fetched ${allVideos.length} videos from database`);
             
             if (allVideos.length === 0) {
                 emptyDatabase.classList.remove('hidden');
