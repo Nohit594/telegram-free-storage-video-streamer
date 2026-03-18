@@ -106,13 +106,13 @@ exports.googleCallback = async (req, res) => {
     const token = generateToken(userId);
 
     // Redirect to frontend with token
-    const redirectUrl = `http://localhost:3000/?token=${token}&userId=${userId}`;
+    const redirectUrl = `https://telegram-free-storage-video-streamer-production.up.railway.app/?token=${token}&userId=${userId}`;
     console.log('Google auth successful, redirecting to:', redirectUrl);
     return res.redirect(redirectUrl);
   } catch (error) {
     console.error('Google callback error:', error.message);
     console.error('Full error:', error);
-    return res.redirect('http://localhost:3000/?error=authentication_failed');
+    return res.redirect('https://telegram-free-storage-video-streamer-production.up.railway.app/?error=authentication_failed');
   }
 };
 
