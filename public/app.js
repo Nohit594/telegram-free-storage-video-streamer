@@ -745,6 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     // HLS Proxy Streaming + Custom Player Controls
     // -------------------------------------------------------------
+    const playerWrapper    = document.querySelector('.player-wrapper');
     const playerContainer  = document.getElementById('player-container');
     const playPauseBtn     = document.getElementById('play-pause-btn');
     const rewindBtn        = document.getElementById('rewind-btn');
@@ -875,7 +876,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function toggleFullscreen() {
         if (!document.fullscreenElement) {
-            playerContainer.requestFullscreen().catch(() => {});
+            playerWrapper.requestFullscreen().catch((err) => {
+                console.error('Fullscreen request failed:', err);
+            });
             fullscreenBtn.textContent = '⛶ Exit';
         } else {
             document.exitFullscreen();
