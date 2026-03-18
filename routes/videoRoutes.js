@@ -22,8 +22,8 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: { 
-        // We can increase this back to a massive size since FFmpeg chunks it down automatically now
-        fileSize: 1024 * 1024 * 1024 // 1GB Limit
+        // Allow up to 5GB file uploads
+        fileSize: 5 * 1024 * 1024 * 1024 // 5GB Limit
     }
 });
 
