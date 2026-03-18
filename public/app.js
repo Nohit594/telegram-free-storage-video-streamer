@@ -95,13 +95,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     const uploadNavBtn = document.getElementById('upload-nav-btn');
     const uploadModal = document.getElementById('upload-modal');
-    const uploadModalContent = document.querySelector('.upload-modal-content');
     const closeUploadBtn = document.getElementById('close-upload');
     const uploadForm = document.getElementById('upload-form');
     const videoInput = document.getElementById('video-input');
     const fileNameDisplay = document.getElementById('file-name-display');
     const uploadBtn = document.getElementById('upload-btn');
-    const uploadFormSection = document.getElementById('upload-form-section');
     
     const progressContainer = document.getElementById('upload-progress-container');
     const progressBar = document.getElementById('progress-bar');
@@ -257,8 +255,6 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBtn.disabled = true;
         uploadBtn.classList.add('disabled');
         videoInput.disabled = true;
-        uploadFormSection.classList.add('hidden');
-        uploadModalContent.classList.add('uploading');
         progressContainer.classList.remove('hidden');
         progressText.textContent = 'Uploading to Server...';
         progressBar.style.width = '0%';
@@ -386,8 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBtn.disabled = true;
         uploadBtn.classList.add('disabled');
         videoInput.disabled = false;
-        uploadFormSection.classList.remove('hidden');
-        uploadModalContent.classList.remove('uploading');
         progressContainer.classList.add('hidden');
         progressBar.style.background = 'var(--red)';
     }
@@ -559,6 +553,13 @@ document.addEventListener('DOMContentLoaded', () => {
         privacyToggleBtn.textContent = isPublic ? '🔓 Public' : '🔒 Private';
         privacyToggleBtn.classList.remove('public', 'private');
         privacyToggleBtn.classList.add(isPublic ? 'public' : 'private');
+        
+        const hintEl = document.getElementById('privacy-hint-text');
+        if (hintEl) {
+            hintEl.textContent = isPublic
+                ? '✓ Anyone with the link can watch this video.'
+                : 'Only you (when logged in) can watch this video.';
+        }
     }
     
     function updateShareLink(videoId) {
@@ -638,7 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    privacyToggleBtn.addEventListener('click', async () => {
+    privacyToggleBtn.addEventListener('change', async () => {
         if (!currentShareVideoId) return;
         
         try {
@@ -650,19 +651,19 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (response.ok) {
                 const updatedVideo = await response.json();
-                // Update the local video data
                 const videoIndex = allVideos.findIndex(v => v.id === currentShareVideoId);
                 if (videoIndex !== -1) {
                     allVideos[videoIndex].isPublic = updatedVideo.isPublic;
                     updatePrivacyButton(updatedVideo);
                 }
-                console.log('Video privacy toggled successfully');
             } else {
-                console.error('Failed to toggle privacy:', response.status);
+                // Revert checkbox on failure
+                privacyToggleBtn.checked = !privacyToggleBtn.checked;
                 alert('Failed to toggle video privacy');
             }
         } catch (error) {
             console.error('Error toggling privacy:', error);
+            privacyToggleBtn.checked = !privacyToggleBtn.checked;
             alert('Error toggling video privacy');
         } finally {
             privacyToggleBtn.disabled = false;
@@ -745,7 +746,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     // HLS Proxy Streaming + Custom Player Controls
     // -------------------------------------------------------------
-    const playerWrapper    = document.querySelector('.player-wrapper');
     const playerContainer  = document.getElementById('player-container');
     const playPauseBtn     = document.getElementById('play-pause-btn');
     const rewindBtn        = document.getElementById('rewind-btn');
@@ -759,6 +759,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressThumb    = document.getElementById('progress-thumb');
     const speedBtn         = document.getElementById('speed-btn');
     const speedMenu        = document.getElementById('speed-menu');
+    const qualityBtn       = document.getElementById('quality-btn');
+    const qualityMenu      = document.getElementById('quality-menu');
     const fullscreenBtn    = document.getElementById('fullscreen-btn');
     const playerTitleEl    = document.getElementById('player-title');
 
@@ -876,9 +878,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function toggleFullscreen() {
         if (!document.fullscreenElement) {
-            playerWrapper.requestFullscreen().catch((err) => {
-                console.error('Fullscreen request failed:', err);
-            });
+            playerContainer.requestFullscreen().catch(() => {});
             fullscreenBtn.textContent = '⛶ Exit';
         } else {
             document.exitFullscreen();
@@ -926,6 +926,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
             hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
                 playerLoader.classList.add('hidden');
+
+                qualityMenu.innerHTML = '<button data-level="-1" class="active">Auto</button>';
+                data.levels.forEach((level, i) => {
+                    const label = level.height ? `${level.height}p` : `Level ${i}`;
+                    const btn = document.createElement('button');
+                    btn.dataset.level = i;
+                    btn.textContent = label;
+                    btn.addEventListener('click', () => {
+                        hlsInstance.currentLevel = i;
+                        qualityBtn.textContent = label;
+                        qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        btn.closest('.dropdown-group').classList.remove('open');
+                    });
+                    qualityMenu.appendChild(btn);
+                });
+
+                qualityMenu.querySelector('[data-level="-1"]').addEventListener('click', () => {
+                    hlsInstance.currentLevel = -1;
+                    qualityBtn.textContent = 'Auto Quality';
+                    qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                    qualityMenu.querySelector('[data-level="-1"]').classList.add('active');
+                    qualityMenu.closest('.dropdown-group').classList.remove('open');
+                });
+
                 videoElement.play().catch(() => {});
             });
 

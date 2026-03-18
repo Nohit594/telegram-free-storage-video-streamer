@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StreamFlix - Watch Video</title>
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
     <!-- Open Graph Meta Tags for Social Media -->
     <meta property="og:type" content="video.other">
     <meta property="og:title" content="Watch on StreamFlix">
@@ -14,537 +15,707 @@
     <meta name="twitter:card" content="player">
     <meta name="twitter:title" content="Watch on StreamFlix">
     <meta name="twitter:description" content="Stream this video directly">
-    
+
     <!-- HLS.js for Streaming -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             background: #000;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             overflow: hidden;
+            user-select: none;
         }
-        
+
+        /* ── Wrapper ── */
         .player-wrapper {
             width: 100vw;
             height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .player-container {
-            width: 100%;
-            height: 100%;
             position: relative;
             background: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            overflow: hidden;
         }
-        
+
+        /* ── Video ── */
         #hls-player {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            display: block;
+            cursor: pointer;
         }
-        
+
+        /* ── Loading Spinner ── */
         .loading-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            inset: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 10;
+            background: rgba(0,0,0,0.85);
+            z-index: 20;
+            flex-direction: column;
+            gap: 1rem;
         }
-        
+        .loading-overlay p {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
         .spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid rgba(255, 255, 255, 0.1);
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(255,255,255,0.1);
             border-top-color: #e50914;
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.75s linear infinite;
         }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Modern Player Controls */
-        .player-controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
-            padding: 40px 20px 20px 20px;
-            opacity: 1;
-            transition: opacity 0.3s;
-            z-index: 20;
-        }
-        
-        .player-controls.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
-        
-        /* Progress Bar */
-        .progress-track {
-            position: relative;
-            width: 100%;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 2px;
-            margin-bottom: 15px;
-            cursor: pointer;
-            transition: height 0.2s;
-        }
-        
-        .progress-track:hover {
-            height: 6px;
-        }
-        
-        .progress-buffered {
-            position: absolute;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.4);
-            border-radius: 2px;
-        }
-        
-        .progress-played {
-            position: absolute;
-            height: 100%;
-            background: #e50914;
-            border-radius: 2px;
-        }
-        
-        .progress-thumb {
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            background: #e50914;
-            border-radius: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-            cursor: grab;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-        
-        .progress-track:hover .progress-thumb {
-            opacity: 1;
-        }
-        
-        /* Controls Bar */
-        .controls-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 15px;
-        }
-        
-        .controls-left, .controls-right {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        /* Control Buttons */
-        .ctrl-btn {
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 16px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-        }
-        
-        .ctrl-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: scale(1.1);
-        }
-        
-        .ctrl-btn:active {
-            transform: scale(0.95);
-        }
-        
-        /* Volume Control */
-        .volume-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .volume-slider {
-            width: 80px;
-            height: 4px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 2px;
-            cursor: pointer;
-            outline: none;
-        }
-        
-        .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 10px;
-            height: 10px;
-            background: #fff;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-        
-        .volume-slider::-moz-range-thumb {
-            width: 10px;
-            height: 10px;
-            background: #fff;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-        }
-        
-        /* Time Display */
-        .time-display {
-            color: #fff;
-            font-size: 14px;
-            font-weight: 500;
-            min-width: 90px;
-           text-align: right;
-        }
-        
-        /* Speed Dropdown */
-        .speed-group {
-            position: relative;
-        }
-        
-        .speed-btn {
-            position: relative;
-        }
-        
-        .speed-menu {
-            position: absolute;
-            bottom: 100%;
-            right: 0;
-            background: rgba(20, 20, 20, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            padding: 8px 0;
-            min-width: 120px;
-            margin-bottom: 10px;
-            display: none;
-            flex-direction: column;
-            backdrop-filter: blur(10px);
-            z-index: 100;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        }
-        
-        .speed-menu.active {
-            display: flex;
-        }
-        
-        .speed-menu button {
-            background: none;
-            border: none;
-            color: #fff;
-            padding: 10px 16px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-            text-align: left;
-        }
-        
-        .speed-menu button:hover {
-            background: rgba(229, 9, 20, 0.3);
-        }
-        
-        .speed-menu button.active {
-            background: #e50914;
-            font-weight: 600;
-        }
-        
-        /* Fullscreen Button */
-        #fullscreen-btn {
-            margin-left: auto;
-        }
-        
-        .error-message {
-            color: #fff;
-            text-align: center;
-            padding: 2rem;
-            max-width: 500px;
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Center Big Play Button ── */
+        .center-play-btn {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%) scale(0);
+            width: 72px;
+            height: 72px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 15;
+            backdrop-filter: blur(4px);
+            transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), background 0.2s;
+            pointer-events: none;
+        }
+        .center-play-btn.visible {
+            transform: translate(-50%, -50%) scale(1);
+            pointer-events: all;
+        }
+        .center-play-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+            margin-left: 4px;
+        }
+        .center-play-btn:hover {
+            background: rgba(229, 9, 20, 0.7);
+            border-color: transparent;
+        }
+
+        /* ── Ripple on click ── */
+        .click-ripple {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 80px; height: 80px;
+            margin: -40px 0 0 -40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transform: scale(0);
+            animation: ripple 0.4s ease-out forwards;
+            pointer-events: none;
+            z-index: 14;
+        }
+        @keyframes ripple {
+            to { transform: scale(3); opacity: 0; }
+        }
+
+        /* ── Controls Overlay ── */
+        .controls-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            /* gradient only at bottom */
+            background: linear-gradient(
+                to top,
+                rgba(0,0,0,0.85) 0%,
+                rgba(0,0,0,0.3) 25%,
+                transparent 55%
+            );
+        }
+        .player-wrapper:hover .controls-overlay,
+        .player-wrapper.paused .controls-overlay,
+        .player-wrapper.force-show .controls-overlay {
+            opacity: 1;
+        }
+
+        /* ── Top bar: title ── */
+        .controls-top {
+            padding: 14px 16px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .video-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 70%;
+        }
+        .streamflix-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #e50914;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            text-shadow: 0 0 8px rgba(229,9,20,0.5);
+        }
+
+        /* ── Progress Bar ── */
+        .progress-area {
+            padding: 0 14px;
+            margin-bottom: 4px;
+            cursor: pointer;
+        }
+        .progress-track {
+            height: 3px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            position: relative;
+            transition: height 0.15s ease;
+        }
+        .progress-area:hover .progress-track { height: 5px; }
+        .progress-buffered {
+            position: absolute; top: 0; left: 0; height: 100%;
+            background: rgba(255,255,255,0.25); border-radius: 2px;
+            pointer-events: none;
+        }
+        .progress-played {
+            position: absolute; top: 0; left: 0; height: 100%;
+            background: #e50914; border-radius: 2px;
+            pointer-events: none;
+        }
+        .progress-thumb {
+            position: absolute; top: 50%;
+            width: 12px; height: 12px;
+            background: #fff; border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            transition: transform 0.15s;
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
+        .progress-area:hover .progress-thumb { transform: translate(-50%, -50%) scale(1); }
+
+        /* ── Bottom Control Bar ── */
+        .controls-bar {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px 10px;
+            gap: 4px;
+        }
+        .ctrl {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, transform 0.1s;
+            flex-shrink: 0;
+        }
+        .ctrl:hover { background: rgba(255,255,255,0.12); }
+        .ctrl:active { transform: scale(0.9); }
+        .ctrl svg {
+            width: 18px;
+            height: 18px;
+            fill: #fff;
+            display: block;
+        }
+        .ctrl.icon-sm svg { width: 16px; height: 16px; }
+
+        .time-display {
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.85);
+            padding: 0 8px;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.3px;
+        }
+        .separator { color: rgba(255,255,255,0.3); font-size: 0.75rem; margin: 0 2px; }
+
+        /* volume group */
+        .volume-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            position: relative;
+        }
+        .volume-slider-wrap {
+            width: 0;
+            overflow: hidden;
+            transition: width 0.2s ease;
+        }
+        .volume-group:hover .volume-slider-wrap { width: 70px; }
+        .volume-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 70px;
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.3);
+            accent-color: #e50914;
+            cursor: pointer;
+            display: block;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        /* spacer */
+        .spacer { flex: 1; }
+
+        /* speed button */
+        .speed-wrap { position: relative; }
+        .speed-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .speed-label:hover { background: rgba(255,255,255,0.12); }
+        .speed-menu {
+            position: absolute;
+            bottom: calc(100% + 6px);
+            right: 0;
+            background: rgba(18,18,18,0.97);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 6px 0;
+            min-width: 100px;
+            display: none;
+            flex-direction: column;
+            z-index: 50;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+        }
+        .speed-wrap.open .speed-menu { display: flex; }
+        .speed-menu button {
+            background: none; border: none; color: rgba(255,255,255,0.75);
+            padding: 8px 14px; text-align: left; cursor: pointer;
+            font-size: 0.82rem; transition: background 0.15s, color 0.15s;
+        }
+        .speed-menu button:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .speed-menu button.active { color: #e50914; font-weight: 600; }
+
+        /* ── Error ── */
+        .error-message {
+            position: absolute; inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            color: #fff;
+            text-align: center;
+            padding: 2rem;
             z-index: 30;
         }
-        
-        .error-title {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-            color: #e50914;
-        }
-        
-        .error-text {
-            color: #ccc;
-            line-height: 1.6;
-        }
+        .error-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .error-title { font-size: 1.3rem; font-weight: 600; color: #e50914; margin-bottom: 0.5rem; }
+        .error-text { color: rgba(255,255,255,0.6); font-size: 0.9rem; line-height: 1.6; }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="player-wrapper">
-        <div class="player-container">
-            <div class="loading-overlay" id="loader">
-                <div class="spinner"></div>
+    <div class="player-wrapper" id="player-wrapper">
+        <video id="hls-player" preload="auto" playsinline></video>
+
+        <!-- Loading -->
+        <div class="loading-overlay" id="loader">
+            <div class="spinner"></div>
+            <p>Loading stream…</p>
+        </div>
+
+        <!-- Center big play button -->
+        <div class="center-play-btn" id="center-play-btn">
+            <!-- Play icon -->
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+
+        <!-- Controls Overlay -->
+        <div class="controls-overlay" id="controls-overlay">
+            <!-- Top: title + badge -->
+            <div class="controls-top">
+                <span class="video-title" id="video-title">Loading…</span>
+                <span class="streamflix-badge">StreamFlix</span>
             </div>
-            <video id="hls-player" preload="auto" playsinline></video>
-            
-            <!-- Modern Player Controls -->
-            <div class="player-controls" id="player-controls">
-                <!-- Progress Bar -->
+
+            <!-- Spacer push footer down -->
+            <div style="flex:1"></div>
+
+            <!-- Progress -->
+            <div class="progress-area" id="progress-area">
                 <div class="progress-track" id="progress-track">
                     <div class="progress-buffered" id="progress-buffered"></div>
                     <div class="progress-played" id="progress-played"></div>
                     <div class="progress-thumb" id="progress-thumb"></div>
                 </div>
-                
-                <!-- Controls Bar -->
-                <div class="controls-bar">
-                    <div class="controls-left">
-                        <button class="ctrl-btn" id="play-pause-btn" title="Play">▶</button>
-                        <button class="ctrl-btn" id="rewind-btn" title="Rewind 10s">⏪</button>
-                        <button class="ctrl-btn" id="forward-btn" title="Forward 10s">⏩</button>
-                        
-                        <div class="volume-group">
-                            <button class="ctrl-btn" id="mute-btn" title="Mute">🔊</button>
-                            <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="1" class="volume-slider">
-                        </div>
-                        
-                        <span class="time-display" id="time-display">0:00 / 0:00</span>
-                    </div>
-                    
-                    <div class="controls-right">
-                        <div class="speed-group">
-                            <button class="ctrl-btn speed-btn" id="speed-btn" title="Playback Speed">1×</button>
-                            <div class="speed-menu" id="speed-menu">
-                                <button data-speed="0.25">0.25×</button>
-                                <button data-speed="0.5">0.5×</button>
-                                <button data-speed="0.75">0.75×</button>
-                                <button data-speed="1" class="active">1× Normal</button>
-                                <button data-speed="1.25">1.25×</button>
-                                <button data-speed="1.5">1.5×</button>
-                                <button data-speed="2">2×</button>
-                            </div>
-                        </div>
-                        
-                        <button class="ctrl-btn" id="fullscreen-btn" title="Fullscreen">⛶</button>
+            </div>
+
+            <!-- Controls bar -->
+            <div class="controls-bar">
+                <!-- Play/Pause -->
+                <button class="ctrl" id="play-pause-btn" title="Play / Pause">
+                    <!-- Play icon default -->
+                    <svg id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="icon-pause" viewBox="0 0 24 24" class="hidden"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+                </button>
+
+                <!-- Rewind 10s -->
+                <button class="ctrl icon-sm" id="rewind-btn" title="Rewind 10s">
+                    <svg viewBox="0 0 24 24"><path d="M12.5 3a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zm-1 3.5l-3 2.5 3 2.5V7.95l2.56 2.05L11.5 12v-1.5L8 8l3.5-2.5zm0 6l-3 2.5 3 2.5v-1.5l2.56 2.05-2.56 2.05v-1.5L8 14l3.5-2.5z"/></svg>
+                </button>
+
+                <!-- Forward 10s -->
+                <button class="ctrl icon-sm" id="forward-btn" title="Forward 10s">
+                    <svg viewBox="0 0 24 24"><path d="M18 13l-3-2.5 3-2.5v1.5L14.44 7.5 18 9.95zm0 6l-3-2.5 3-2.5v1.5l-3.56-2.5L18 15.95zM11.5 3a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19z"/></svg>
+                </button>
+
+                <!-- Volume -->
+                <div class="volume-group">
+                    <button class="ctrl" id="mute-btn" title="Mute">
+                        <svg id="icon-volume" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.5 4.5 0 0 0 16.5 12z"/></svg>
+                        <svg id="icon-muted" viewBox="0 0 24 24" class="hidden"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45A4.47 4.47 0 0 0 16.5 12zm2.5 0a6.84 6.84 0 0 1-.54 2.65L20 16.15A8.8 8.8 0 0 0 21 12c0-4.28-3-7.86-7-8.77v2.06A6.98 6.98 0 0 1 19 12zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25A6.97 6.97 0 0 1 14 19.58v2.06A8.94 8.94 0 0 0 17.73 19l2 2L21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                    </button>
+                    <div class="volume-slider-wrap">
+                        <input type="range" class="volume-slider" id="volume-slider" min="0" max="1" step="0.02" value="1">
                     </div>
                 </div>
+
+                <!-- Time -->
+                <span class="time-display">
+                    <span id="current-time">0:00</span>
+                    <span class="separator"> / </span>
+                    <span id="duration">0:00</span>
+                </span>
+
+                <div class="spacer"></div>
+
+                <!-- Speed -->
+                <div class="speed-wrap" id="speed-wrap">
+                    <div class="speed-label" id="speed-label">1×</div>
+                    <div class="speed-menu" id="speed-menu">
+                        <button data-speed="0.25">0.25×</button>
+                        <button data-speed="0.5">0.5×</button>
+                        <button data-speed="0.75">0.75×</button>
+                        <button data-speed="1" class="active">Normal</button>
+                        <button data-speed="1.25">1.25×</button>
+                        <button data-speed="1.5">1.5×</button>
+                        <button data-speed="2">2×</button>
+                    </div>
+                </div>
+
+                <!-- PiP -->
+                <button class="ctrl icon-sm" id="pip-btn" title="Picture in Picture">
+                    <svg viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H3V5h18v14z"/></svg>
+                </button>
+
+                <!-- Fullscreen -->
+                <button class="ctrl" id="fullscreen-btn" title="Fullscreen">
+                    <svg id="icon-fullscreen" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zm-3-14v2h3v3h2V3z"/></svg>
+                    <svg id="icon-exit-fullscreen" viewBox="0 0 24 24" class="hidden"><path d="M5 16h3v3h2v-5H5zm3-8H5v2h5V5H8zm6 11h2v-3h3v-2h-5zm2-11V5h-2v5h5V8z"/></svg>
+                </button>
             </div>
-            
-            <div class="error-message hidden" id="error-message">
-                <h2 class="error-title">Video Not Found</h2>
-                <p class="error-text">The video you're trying to watch is not available or has been removed.</p>
-            </div>
+        </div>
+
+        <!-- Error -->
+        <div class="error-message hidden" id="error-message">
+            <div class="error-icon">⚠️</div>
+            <h2 class="error-title">Video Unavailable</h2>
+            <p class="error-text" id="error-text">This video is not available or has been removed.</p>
         </div>
     </div>
 
-    <script src="embed-player.js"></script>
-</body>
-</html>
-        document.addEventListener('DOMContentLoaded', () => {
-            const videoElement = document.getElementById('hls-player');
-            const loader = document.getElementById('loader');
-            const errorMessage = document.getElementById('error-message');
-            const playButton = document.getElementById('play-button');
-            
-            // Get video ID from URL parameter
-            const urlParams = new URLSearchParams(window.location.search);
-            const videoId = urlParams.get('v');
-            
-            if (!videoId) {
-                showError('No video ID provided');
-                return;
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const video      = document.getElementById('hls-player');
+        const wrapper    = document.getElementById('player-wrapper');
+        const loader     = document.getElementById('loader');
+        const errBox     = document.getElementById('error-message');
+        const errText    = document.getElementById('error-text');
+        const centerBtn  = document.getElementById('center-play-btn');
+        const overlay    = document.getElementById('controls-overlay');
+
+        // Controls
+        const playPauseBtn  = document.getElementById('play-pause-btn');
+        const iconPlay      = document.getElementById('icon-play');
+        const iconPause     = document.getElementById('icon-pause');
+        const rewindBtn     = document.getElementById('rewind-btn');
+        const forwardBtn    = document.getElementById('forward-btn');
+        const muteBtn       = document.getElementById('mute-btn');
+        const iconVolume    = document.getElementById('icon-volume');
+        const iconMuted     = document.getElementById('icon-muted');
+        const volumeSlider  = document.getElementById('volume-slider');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationEl    = document.getElementById('duration');
+        const progressArea  = document.getElementById('progress-area');
+        const progressTrack = document.getElementById('progress-track');
+        const progressPlayed= document.getElementById('progress-played');
+        const progressBuf   = document.getElementById('progress-buffered');
+        const progressThumb = document.getElementById('progress-thumb');
+        const pipBtn        = document.getElementById('pip-btn');
+        const fsBtn         = document.getElementById('fullscreen-btn');
+        const iconFs        = document.getElementById('icon-fullscreen');
+        const iconExitFs    = document.getElementById('icon-exit-fullscreen');
+        const speedWrap     = document.getElementById('speed-wrap');
+        const speedLabel    = document.getElementById('speed-label');
+        const speedMenu     = document.getElementById('speed-menu');
+        const videoTitleEl  = document.getElementById('video-title');
+
+        // ── Get video ID ──
+        const params  = new URLSearchParams(window.location.search);
+        const videoId = params.get('v');
+        if (!videoId) { showError('No video ID provided'); return; }
+
+        updateMetaTags(videoId);
+        loadVideo(videoId);
+
+        // ── Helpers ──
+        function fmt(s) {
+            if (isNaN(s) || s < 0) s = 0;
+            const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+            return `${m}:${sec.toString().padStart(2,'0')}`;
+        }
+
+        function showError(msg) {
+            loader.classList.add('hidden');
+            errText.textContent = msg;
+            errBox.classList.remove('hidden');
+        }
+
+        function setPlayState(playing) {
+            iconPlay.classList.toggle('hidden', playing);
+            iconPause.classList.toggle('hidden', !playing);
+            centerBtn.classList.toggle('visible', !playing);
+            wrapper.classList.toggle('paused', !playing);
+        }
+
+        // ── Progress updates ──
+        function updateProgress() {
+            if (!video.duration) return;
+            const pct = (video.currentTime / video.duration) * 100;
+            progressPlayed.style.width = pct + '%';
+            progressThumb.style.left = pct + '%';
+            if (video.buffered.length > 0) {
+                const bpct = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
+                progressBuf.style.width = bpct + '%';
             }
-            
-            // Update meta tags with video info
-            updateMetaTags(videoId);
-            
-            // Load and play the video
-            loadVideo(videoId);
-            
-            // Play button click handler
-            playButton.addEventListener('click', () => {
-                videoElement.play().catch(err => console.error('Play error:', err));
-                playButton.classList.add('hidden');
-            });
-            
-            // Video state handlers
-            videoElement.addEventListener('play', () => {
-                playButton.classList.add('hidden');
-            });
-            
-            videoElement.addEventListener('pause', () => {
-                playButton.classList.remove('hidden');
-            });
-            
-            async function updateMetaTags(videoId) {
-                try {
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`/api/videos/${videoId}${token ? '?token=' + token : ''}`);
-                    if (res.ok) {
-                        const video = await res.json();
-                        const videoTitle = video.filename?.replace(/\.[^/.]+$/, '') || 'StreamFlix Video';
-                        const thumbnailUrl = `/api/videos/thumbnail/${videoId}`;
-                        
-                        document.title = `${videoTitle} - StreamFlix`;
-                        document.querySelector('meta[property="og:title"]').content = videoTitle;
-                        document.querySelector('meta[property="og:image"]').content = `${window.location.origin}${thumbnailUrl}`;
-                        document.querySelector('meta[property="og:url"]').content = window.location.href;
-                    }
-                } catch (err) {
-                    console.error('Failed to update meta tags:', err);
-                }
-            }
-            
-            async function loadVideo(videoId) {
-                try {
-                    const token = localStorage.getItem('token');
-                    const m3u8Url = `/api/videos/stream/${videoId}/master.m3u8${token ? '?token=' + token : ''}`;
-                    
-                    if (Hls.isSupported()) {
-                        const hls = new Hls({
-                            capLevelToPlayerSize: true,
-                            maxBufferLength: 30,
-                            autoStartLoad: true,
-                            xhrSetup: (xhr, url) => {
-                                // Add token to all HLS segment requests
-                                if (token) {
-                                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                                }
-                            }
-                        });
-                        
-                        hls.loadSource(m3u8Url);
-                        hls.attachMedia(videoElement);
-                        
-                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                            loader.classList.add('hidden');
-                            
-                            // Try to auto-play
-                            videoElement.play().then(() => {
-                                // Auto-play succeeded
-                                playButton.classList.add('hidden');
-                            }).catch(err => {
-                                // Auto-play prevented by browser - show play button
-                                console.log('Auto-play prevented, showing play button');
-                                playButton.classList.remove('hidden');
-                            });
-                        });
-                        
-                        hls.on(Hls.Events.ERROR, (event, data) => {
-                            if (data.fatal) {
-                                loader.classList.add('hidden');
-                                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                                    showError('Network error - video may not be available');
-                                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                                    showError('Media error - cannot play video');
-                                } else {
-                                    showError('Failed to load video');
-                                }
-                            }
-                        });
-                    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                        videoElement.src = m3u8Url;
-                        videoElement.addEventListener('loadedmetadata', () => {
-                            loader.classList.add('hidden');
-                            
-                            // Try to auto-play
-                            videoElement.play().then(() => {
-                                playButton.classList.add('hidden');
-                            }).catch(err => {
-                                // Auto-play prevented - show play button
-                                playButton.classList.remove('hidden');
-                            });
-                        });
-                        
-                        videoElement.addEventListener('error', () => {
-                            loader.classList.add('hidden');
-                            showError('Failed to load video');
-                        });
-                    } else {
-                        showError('Your browser does not support HLS streaming');
-                    }
-                } catch (error) {
-                    console.error('Error loading video:', error);
-                    loader.classList.add('hidden');
-                    showError('Video not found or unavailable');
-                }
-            }
-            
-            function showError(message) {
-                errorMessage.classList.remove('hidden');
-                errorMessage.querySelector('.error-text').textContent = message;
-            }
-            
-            // Handle keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
-                if (e.key === ' ' || e.key === 'k') {
-                    e.preventDefault();
-                    if (videoElement.paused) {
-                        videoElement.play();
-                    } else {
-                        videoElement.pause();
-                    }
-                } else if (e.key === 'f') {
-                    toggleFullscreen();
-                } else if (e.key === 'm') {
-                    videoElement.muted = !videoElement.muted;
-                }
-            });
-            
-            function toggleFullscreen() {
-                if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(() => {});
-                } else {
-                    if (document.exitFullscreen) {
-                        document.exitFullscreen();
-                    }
-                }
-            }
-            
-            // Click to toggle fullscreen
-            document.querySelector('.player-container').addEventListener('dblclick', toggleFullscreen);
-            
-            // Click to play/pause
-            videoElement.addEventListener('click', () => {
-                if (videoElement.paused) {
-                    videoElement.play();
-                } else {
-                    videoElement.pause();
-                }
+            currentTimeEl.textContent = fmt(video.currentTime);
+            durationEl.textContent    = fmt(video.duration);
+        }
+        video.addEventListener('timeupdate', updateProgress);
+        video.addEventListener('progress',   updateProgress);
+        video.addEventListener('loadedmetadata', updateProgress);
+
+        // ── Progress bar scrubbing ──
+        let scrubbing = false;
+        function scrubTo(e) {
+            const rect  = progressTrack.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            video.currentTime = ratio * video.duration;
+        }
+        progressArea.addEventListener('mousedown', e => { scrubbing = true; scrubTo(e); });
+        document.addEventListener('mousemove',     e => { if (scrubbing) scrubTo(e); });
+        document.addEventListener('mouseup',       () => scrubbing = false);
+
+        // ── Play / Pause ──
+        function togglePlay() {
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+        }
+        playPauseBtn.addEventListener('click', togglePlay);
+        centerBtn.addEventListener('click', togglePlay);
+        video.addEventListener('click', e => {
+            // center ripple
+            const ripple = document.createElement('div');
+            ripple.className = 'click-ripple';
+            wrapper.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 400);
+            togglePlay();
+        });
+
+        video.addEventListener('play',  () => setPlayState(true));
+        video.addEventListener('pause', () => setPlayState(false));
+        video.addEventListener('ended', () => setPlayState(false));
+
+        // ── Seek ──
+        rewindBtn.addEventListener('click',  () => { video.currentTime = Math.max(0, video.currentTime - 10); });
+        forwardBtn.addEventListener('click', () => { video.currentTime = Math.min(video.duration, video.currentTime + 10); });
+
+        // ── Volume ──
+        muteBtn.addEventListener('click', () => {
+            video.muted = !video.muted;
+            iconVolume.classList.toggle('hidden', video.muted);
+            iconMuted.classList.toggle('hidden',  !video.muted);
+        });
+        volumeSlider.addEventListener('input', () => {
+            video.volume = volumeSlider.value;
+            video.muted  = (volumeSlider.value == 0);
+            iconVolume.classList.toggle('hidden', video.muted);
+            iconMuted.classList.toggle('hidden',  !video.muted);
+        });
+
+        // ── Speed ──
+        speedLabel.addEventListener('click', e => {
+            e.stopPropagation();
+            speedWrap.classList.toggle('open');
+        });
+        speedMenu.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const spd = parseFloat(btn.dataset.speed);
+                video.playbackRate = spd;
+                speedLabel.textContent = spd === 1 ? '1×' : spd + '×';
+                speedMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                speedWrap.classList.remove('open');
             });
         });
+        document.addEventListener('click', () => speedWrap.classList.remove('open'));
+
+        // ── PiP ──
+        pipBtn.addEventListener('click', () => {
+            if (document.pictureInPictureElement) {
+                document.exitPictureInPicture().catch(() => {});
+            } else {
+                video.requestPictureInPicture().catch(() => {});
+            }
+        });
+
+        // ── Fullscreen ──
+        function toggleFS() {
+            if (!document.fullscreenElement) {
+                wrapper.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+        fsBtn.addEventListener('click', toggleFS);
+        wrapper.addEventListener('dblclick', e => {
+            // don't trigger on controls
+            if (!e.target.closest('.controls-bar')) toggleFS();
+        });
+        document.addEventListener('fullscreenchange', () => {
+            const isFs = !!document.fullscreenElement;
+            iconFs.classList.toggle('hidden', isFs);
+            iconExitFs.classList.toggle('hidden', !isFs);
+        });
+
+        // ── Keyboard shortcuts ──
+        document.addEventListener('keydown', e => {
+            if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+            switch(e.key) {
+                case ' ': case 'k': e.preventDefault(); togglePlay(); break;
+                case 'f': toggleFS(); break;
+                case 'm': muteBtn.click(); break;
+                case 'ArrowLeft':  e.preventDefault(); video.currentTime -= 5; break;
+                case 'ArrowRight': e.preventDefault(); video.currentTime += 5; break;
+                case 'ArrowUp':    e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); volumeSlider.value = video.volume; break;
+                case 'ArrowDown':  e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); volumeSlider.value = video.volume; break;
+            }
+        });
+
+        // ── Auto-hide controls ──
+        let hideTimer;
+        function resetHideTimer() {
+            clearTimeout(hideTimer);
+            wrapper.classList.add('force-show');
+            hideTimer = setTimeout(() => {
+                if (!video.paused) wrapper.classList.remove('force-show');
+            }, 3000);
+        }
+        wrapper.addEventListener('mousemove', resetHideTimer);
+        wrapper.addEventListener('touchstart', resetHideTimer);
+
+        // ── Meta tags ──
+        async function updateMetaTags(id) {
+            try {
+                const token = localStorage.getItem('token');
+                const res   = await fetch(`/api/videos/${id}${token ? '?token=' + token : ''}`);
+                if (res.ok) {
+                    const data  = await res.json();
+                    const title = data.filename?.replace(/\.[^/.]+$/, '') || 'StreamFlix Video';
+                    document.title = title + ' — StreamFlix';
+                    videoTitleEl.textContent = title;
+                    document.querySelector('meta[property="og:title"]').content = title;
+                    document.querySelector('meta[property="og:image"]').content =
+                        window.location.origin + `/api/videos/thumbnail/${id}`;
+                    document.querySelector('meta[property="og:url"]').content = window.location.href;
+                }
+            } catch {}
+        }
+
+        // ── Load Video ──
+        async function loadVideo(id) {
+            try {
+                const token  = localStorage.getItem('token');
+                const m3u8   = `/api/videos/stream/${id}/master.m3u8${token ? '?token=' + token : ''}`;
+
+                if (Hls.isSupported()) {
+                    const hls = new Hls({
+                        capLevelToPlayerSize: true,
+                        maxBufferLength: 30,
+                        autoStartLoad: true,
+                        xhrSetup: (xhr) => {
+                            if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        }
+                    });
+                    hls.loadSource(m3u8);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        loader.classList.add('hidden');
+                        video.play().then(() => setPlayState(true))
+                             .catch(() => setPlayState(false));
+                    });
+                    hls.on(Hls.Events.ERROR, (_, data) => {
+                        if (data.fatal) {
+                            showError(data.type === Hls.ErrorTypes.NETWORK_ERROR
+                                ? 'Network error — video may not be available'
+                                : 'Failed to load video');
+                        }
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = m3u8;
+                    video.addEventListener('loadedmetadata', () => {
+                        loader.classList.add('hidden');
+                        video.play().then(() => setPlayState(true))
+                             .catch(() => setPlayState(false));
+                    });
+                    video.addEventListener('error', () => showError('Failed to load video'));
+                } else {
+                    showError('Your browser does not support HLS streaming');
+                }
+            } catch {
+                showError('Video not found or unavailable');
+            }
+        }
+    });
     </script>
 </body>
 </html>
