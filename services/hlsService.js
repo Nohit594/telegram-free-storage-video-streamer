@@ -3,15 +3,21 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
+// On Windows development: try to use local ffmpeg.exe if available
+// On production (Railway): will use system-installed ffmpeg
 const ffmpegPath = path.join(__dirname, '../ffmpeg.exe');
 if (fs.existsSync(ffmpegPath)) {
     ffmpeg.setFfmpegPath(ffmpegPath);
+    console.log('Using local ffmpeg.exe');
+} else {
+    console.log('Using system ffmpeg (no local exe found)');
 }
 
 // ffprobe is optional (full FFmpeg build). If not present, fixed timestamps are used.
 const ffprobePath = path.join(__dirname, '../ffprobe.exe');
 if (fs.existsSync(ffprobePath)) {
     ffmpeg.setFfprobePath(ffprobePath);
+    console.log('Using local ffprobe.exe');
 }
 
 const hlsOutputDir = path.join(__dirname, '../hls');
@@ -60,9 +66,15 @@ exports.convertToHLS = (inputFilePath) => {
                 resolve({ m3u8Path, hlsFolder: outputFolder, uniqueId });
             })
             .on('error', (err) => {
-                const errorMsg = err.message.includes('ffmpeg') ? 'FFmpeg not found on this system. Please install FFmpeg.' : err.message;
+                console.error('Full FFmpeg error:', err);
+                const errorMsg = err.message.includes('ffmpeg') 
+                    ? 'FFmpeg not found on this system. Please install FFmpeg.' 
+                    : err.message;
                 console.error('Error during FFmpeg HLS conversion:', errorMsg);
                 reject(new Error(errorMsg));
+            })
+            .on('start', (cmd) => {
+                console.log('FFmpeg command started:', cmd);
             })
             .run();
     });

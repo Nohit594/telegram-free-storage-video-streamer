@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
 const passport = require('passport');
+const { execSync } = require('child_process');
 const connectDB = require('./config/db');
 require('./config/passport');
 
@@ -12,6 +13,16 @@ const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Check if FFmpeg is installed
+try {
+    execSync('ffmpeg -version', { stdio: 'pipe' });
+    console.log('✓ FFmpeg is available');
+} catch (error) {
+    console.error('✗ FFmpeg not found! Video uploads will fail.');
+    console.error('On Railway: This should have been installed by Dockerfile');
+    console.error('Locally: Please install FFmpeg from https://ffmpeg.org/download.html');
+}
 
 // Connect to MongoDB
 connectDB();
