@@ -40,21 +40,29 @@
     <!-- Upload Modal -->
     <div id="upload-modal" class="modal hidden">
         <div class="modal-content upload-modal-content">
-            <button class="close-btn" id="close-upload">&times;</button>
-            <h2>Upload a Video</h2>
-            <p class="subtitle">Video will be converted to HLS and served via Cloudflare Edge.</p>
+            <!-- Header with close button -->
+            <div class="upload-modal-header">
+                <h2>Upload a Video</h2>
+                <button class="close-btn" id="close-upload">&times;</button>
+            </div>
             
-            <form id="upload-form">
-                <div class="file-drop-area">
-                    <input type="file" id="video-input" accept="video/*" required>
-                    <div class="drop-text">
-                        <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                        <span id="file-name-display">Drag & drop or click to browse</span>
+            <!-- Upload Form Section -->
+            <div id="upload-form-section">
+                <p class="subtitle">Video will be converted to HLS and served via Cloudflare Edge.</p>
+                
+                <form id="upload-form">
+                    <div class="file-drop-area">
+                        <input type="file" id="video-input" accept="video/*" required>
+                        <div class="drop-text">
+                            <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <span id="file-name-display">Drag & drop or click to browse</span>
+                        </div>
                     </div>
-                </div>
-                <button type="submit" id="upload-btn" class="netflix-btn primary-btn disabled" disabled>Start Upload</button>
-            </form>
+                    <button type="submit" id="upload-btn" class="netflix-btn primary-btn disabled" disabled>Start Upload</button>
+                </form>
+            </div>
 
+            <!-- Progress Section -->
             <div id="upload-progress-container" class="hidden">
                 <p id="progress-status-text">Uploading to Server...</p>
                 <div class="progress-bar-bg">

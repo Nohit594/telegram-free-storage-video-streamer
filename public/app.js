@@ -95,11 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------------------------------------------------------------
     const uploadNavBtn = document.getElementById('upload-nav-btn');
     const uploadModal = document.getElementById('upload-modal');
+    const uploadModalContent = document.querySelector('.upload-modal-content');
     const closeUploadBtn = document.getElementById('close-upload');
     const uploadForm = document.getElementById('upload-form');
     const videoInput = document.getElementById('video-input');
     const fileNameDisplay = document.getElementById('file-name-display');
     const uploadBtn = document.getElementById('upload-btn');
+    const uploadFormSection = document.getElementById('upload-form-section');
     
     const progressContainer = document.getElementById('upload-progress-container');
     const progressBar = document.getElementById('progress-bar');
@@ -255,6 +257,8 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBtn.disabled = true;
         uploadBtn.classList.add('disabled');
         videoInput.disabled = true;
+        uploadFormSection.classList.add('hidden');
+        uploadModalContent.classList.add('uploading');
         progressContainer.classList.remove('hidden');
         progressText.textContent = 'Uploading to Server...';
         progressBar.style.width = '0%';
@@ -382,6 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBtn.disabled = true;
         uploadBtn.classList.add('disabled');
         videoInput.disabled = false;
+        uploadFormSection.classList.remove('hidden');
+        uploadModalContent.classList.remove('uploading');
         progressContainer.classList.add('hidden');
         progressBar.style.background = 'var(--red)';
     }

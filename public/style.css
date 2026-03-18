@@ -868,17 +868,45 @@ body {
     transform: rotate(90deg) scale(1.2);
 }
 
-.upload-modal-content h2 { 
-    margin-bottom: 0.5rem; 
+.upload-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+}
+
+.upload-modal-header h2 {
+    margin: 0;
     font-size: 1.8rem;
     background: linear-gradient(135deg, #e50914 0%, #b82814 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    padding-right: 2.5rem;
+    flex: 1;
 }
+
+.upload-modal-header .close-btn {
+    flex-shrink: 0;
+}
+
 .upload-modal-content {
     max-width: 500px;
+    transition: all 0.3s ease;
+}
+
+.upload-modal-content.uploading {
+    max-width: 400px;
+}
+
+#upload-form-section {
+    transition: all 0.3s ease;
+    opacity: 1;
+}
+
+#upload-form-section.hidden {
+    display: none;
+    opacity: 0;
 }
 .subtitle { 
     color: var(--text-dark); 
