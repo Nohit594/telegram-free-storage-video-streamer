@@ -139,6 +139,7 @@ exports.uploadVideo = async (req, res) => {
         const videos = getStoredVideos();
         const videoData = {
             id: hlsData.uniqueId,
+            userId: req.user._id.toString(),  // Link video to authenticated user
             filename: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
             thumbnailFileId: thumbResult.fileId,
             thumbnailMessageId: thumbResult.messageId,
@@ -183,7 +184,16 @@ function cleanupTempFiles(videoPath, thumbPath, hlsFolder) {
 }
 
 exports.getVideos = (req, res) => {
-    res.json(getStoredVideos());
+    try {
+        const allVideos = getStoredVideos();
+        // Filter videos to only show user's own videos
+        const userVideos = allVideos.filter(video => video.userId === req.user._id.toString());
+        console.log(`User ${req.user._id} has ${userVideos.length} videos`);
+        res.json(userVideos);
+    } catch (error) {
+        console.error('Error fetching videos:', error);
+        res.status(500).json({ error: 'Failed to fetch videos' });
+    }
 };
 
 exports.getVideoById = (req, res) => {
@@ -194,6 +204,11 @@ exports.getVideoById = (req, res) => {
         
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });
+        }
+        
+        // Check ownership - user can only access their own videos
+        if (video.userId !== req.user._id.toString()) {
+            return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
         
         res.json(video);
@@ -219,6 +234,11 @@ exports.renameVideo = (req, res) => {
             return res.status(404).json({ error: 'Video not found' });
         }
         
+        // Check ownership
+        if (videos[videoIndex].userId !== req.user._id.toString()) {
+            return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
+        }
+        
         // Update the filename
         videos[videoIndex].filename = filename.trim();
         saveVideos(videos);
@@ -240,6 +260,11 @@ exports.getThumbnail = async (req, res) => {
         const video = getStoredVideos().find(v => v.id === videoId);
         if (!video || !video.thumbnailFileId) return res.status(404).end();
         
+        // Check ownership
+        if (video.userId !== req.user._id.toString()) {
+            return res.status(403).end();
+        }
+        
         const telegramFile = await telegramService.getFileUrl(video.thumbnailFileId);
         
         // Proxy the image directly
@@ -258,6 +283,11 @@ exports.getPlaylist = async (req, res) => {
 
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });
+        }
+        
+        // Check ownership
+        if (video.userId !== req.user._id.toString()) {
+            return res.status(403).json({ error: 'Unauthorized' });
         }
 
         const telegramFile = await telegramService.getFileUrl(video.playlistFileId);
@@ -291,6 +321,11 @@ exports.getChunk = async (req, res) => {
         const video = getStoredVideos().find(v => v.id === videoId);
 
         if (!video) return res.status(404).json({ error: 'Video not found' });
+        
+        // Check ownership
+        if (video.userId !== req.user._id.toString()) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
 
         const chunk = video.chunks.find(c => c.name === chunkName);
         if (!chunk) return res.status(404).json({ error: 'Chunk not found' });
@@ -316,14 +351,16 @@ exports.getChunk = async (req, res) => {
 exports.deleteVideo = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const videos = getStoredVideos();
+        const videos = getStoredVideos();        
+        // Find video and check ownership
         const videoIndex = videos.findIndex(v => v.id === videoId);
-
         if (videoIndex === -1) {
             return res.status(404).json({ error: 'Video not found' });
         }
-
         const video = videos[videoIndex];
+        if (video.userId !== req.user._id.toString()) {
+            return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
+        }
 
         // Delete all chunks from Telegram
         console.log(`Deleting video ${videoId} from Telegram...`);
