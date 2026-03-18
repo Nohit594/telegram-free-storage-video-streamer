@@ -549,6 +549,40 @@ body {
     color: var(--text-dark);
 }
 
+.privacy-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin: 2rem 0 1.5rem;
+    padding: 1rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+}
+
+.privacy-label {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-light);
+}
+
+.privacy-btn {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    min-width: 130px;
+    transition: all 0.3s;
+}
+
+.privacy-btn.public {
+    background: rgba(255, 152, 0, 0.3) !important;
+    border-color: #ff9800 !important;
+}
+
+.privacy-btn.private {
+    background: rgba(229, 9, 20, 0.3) !important;
+    border-color: var(--red) !important;
+}
+
 .share-actions {
     display: flex;
     gap: 1rem;

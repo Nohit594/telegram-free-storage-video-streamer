@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const qrCodeCanvas = document.getElementById('qr-code');
     const linkTabs = document.querySelectorAll('.link-tab');
     const linkTypeLabel = document.getElementById('link-type-label');
+    const privacyToggleBtn = document.getElementById('privacy-toggle-btn');
     
     // Rename modal elements
     const renameModal = document.getElementById('rename-modal');
@@ -543,7 +544,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!video) return;
         
         updateShareLink(videoId);
+        updatePrivacyButton(video);
         shareModal.classList.remove('hidden');
+    }
+    
+    function updatePrivacyButton(video) {
+        const isPublic = video.isPublic === true;
+        privacyToggleBtn.textContent = isPublic ? '🔓 Public' : '🔒 Private';
+        privacyToggleBtn.classList.remove('public', 'private');
+        privacyToggleBtn.classList.add(isPublic ? 'public' : 'private');
     }
     
     function updateShareLink(videoId) {
@@ -620,6 +629,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentShareVideoId) {
             openPlayer(currentShareVideoId);
             shareModal.classList.add('hidden');
+        }
+    });
+
+    privacyToggleBtn.addEventListener('click', async () => {
+        if (!currentShareVideoId) return;
+        
+        try {
+            privacyToggleBtn.disabled = true;
+            const response = await fetch(`/api/videos/${currentShareVideoId}/toggle-privacy`, {
+                method: 'PATCH',
+                headers: getAuthHeaders()
+            });
+            
+            if (response.ok) {
+                const updatedVideo = await response.json();
+                // Update the local video data
+                const videoIndex = allVideos.findIndex(v => v.id === currentShareVideoId);
+                if (videoIndex !== -1) {
+                    allVideos[videoIndex].isPublic = updatedVideo.isPublic;
+                    updatePrivacyButton(updatedVideo);
+                }
+                console.log('Video privacy toggled successfully');
+            } else {
+                console.error('Failed to toggle privacy:', response.status);
+                alert('Failed to toggle video privacy');
+            }
+        } catch (error) {
+            console.error('Error toggling privacy:', error);
+            alert('Error toggling video privacy');
+        } finally {
+            privacyToggleBtn.disabled = false;
         }
     });
 

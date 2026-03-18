@@ -152,7 +152,8 @@ exports.uploadVideo = async (req, res) => {
             playlistMessageId: playlistResult.messageId,
             chunks: chunkFileIds,
             uploadTime: new Date().toISOString(),
-            originalSize: req.file.size
+            originalSize: req.file.size,
+            isPublic: false  // New videos are private by default
         };
         videos.push(videoData);
         saveVideos(videos);
@@ -256,6 +257,38 @@ exports.renameVideo = (req, res) => {
     } catch (error) {
         console.error('Rename error:', error);
         res.status(500).json({ error: 'Failed to rename video' });
+    }
+};
+
+exports.togglePrivacy = (req, res) => {
+    try {
+        const videoId = req.params.videoId;
+        const videos = getStoredVideos();
+        const videoIndex = videos.findIndex(v => v.id === videoId);
+        
+        if (videoIndex === -1) {
+            return res.status(404).json({ error: 'Video not found' });
+        }
+        
+        // Check ownership
+        if (videos[videoIndex].userId !== req.user.id) {
+            return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
+        }
+        
+        // Toggle the isPublic flag (default to false/private if not set)
+        const currentStatus = videos[videoIndex].isPublic !== true;
+        videos[videoIndex].isPublic = !currentStatus;
+        
+        saveVideos(videos);
+        
+        console.log(`Video ${videoId} privacy toggled to: ${videos[videoIndex].isPublic ? 'PUBLIC' : 'PRIVATE'}`);
+        res.json({ 
+            message: 'Video privacy toggled successfully',
+            video: videos[videoIndex]
+        });
+    } catch (error) {
+        console.error('Toggle privacy error:', error);
+        res.status(500).json({ error: 'Failed to toggle video privacy' });
     }
 };
 

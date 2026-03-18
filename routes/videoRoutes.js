@@ -36,5 +36,6 @@ router.get('/stream/:videoId/chunk/:chunkName', authMiddleware, videoController.
 router.delete('/:videoId', authMiddleware, videoController.deleteVideo);
 router.get('/:videoId', authMiddleware, videoController.getVideoById);
 router.put('/:videoId/rename', authMiddleware, videoController.renameVideo);
+router.patch('/:videoId/toggle-privacy', authMiddleware, videoController.togglePrivacy);
 
 module.exports = router;
