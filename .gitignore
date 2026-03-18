@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Uploads and temporary files
+uploads/
+hls/
+data/
+temp/
+
+# Large files (FFmpeg binaries)
+*.exe
+*.dll
+*.so
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+out/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Old documentation (combined into README.md)
+AUTH_GUIDE.md
+DELETE_FEATURE.md
+GOOGLE_AUTH_DEBUG.md
+QUICK_START.md
+RENAME_FEATURE.md
+SHARING_GUIDE.md

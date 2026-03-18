@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamFlix | Premium Video Storage</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Netflix+Sans:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- HLS.js for Streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- QR Code Generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Open Graph / Meta Tags for Social Sharing -->
+    <meta property="og:type" content="video.other">
+    <meta property="og:site_name" content="StreamFlix">
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:site" content="@StreamFlix">
+</head>
+<body>
+    <nav class="netflix-nav">
+        <div class="nav-left">
+            <h1 class="logo">STREAMFLIX</h1>
+            <ul class="nav-links">
+                <li><a href="#" class="active" data-section="library">My Library</a></li>
+                <li><a href="#" id="upload-nav-btn">Upload</a></li>
+            </ul>
+        </div>
+        <div class="nav-right">
+            <span class="storage-info" id="storage-info">0 MB</span>
+            <div id="auth-section" class="auth-section">
+                <span class="user-name" id="user-name" style="display:none;"></span>
+                <button id="logout-btn" style="display:none;" class="logout-btn">Logout</button>
+                <a id="login-btn" href="/login.html" style="display:none;" class="login-btn">Login</a>
+            </div>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png" alt="Profile" class="profile-icon" id="profile-icon">
+        </div>
+    </nav>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal hidden">
+        <div class="modal-content upload-modal-content">
+            <button class="close-btn" id="close-upload">&times;</button>
+            <h2>Upload a Video</h2>
+            <p class="subtitle">Video will be converted to HLS and served via Cloudflare Edge.</p>
+            
+            <form id="upload-form">
+                <div class="file-drop-area">
+                    <input type="file" id="video-input" accept="video/*" required>
+                    <div class="drop-text">
+                        <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <span id="file-name-display">Drag & drop or click to browse</span>
+                    </div>
+                </div>
+                <button type="submit" id="upload-btn" class="netflix-btn primary-btn disabled" disabled>Start Upload</button>
+            </form>
+
+            <div id="upload-progress-container" class="hidden">
+                <p id="progress-status-text">Uploading to Server...</p>
+                <div class="progress-bar-bg">
+                    <div id="progress-bar" class="progress-fill"></div>
+                </div>
+                <!-- Warning note because FFmpeg conversion blocking -->
+                <p class="processing-note">Note: Large videos may take several minutes to chunk and upload to Telegram. Do not close this window.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Player Modal -->
+    <div id="player-modal" class="modal hidden">
+        <div class="player-wrapper">
+            <div class="player-container" id="player-container">
+                <!-- The actual video element -->
+                <video id="hls-player" preload="auto"></video>
+
+                <!-- Spinner overlay -->
+                <div class="player-spinner hidden" id="player-loader">
+                    <div class="spinner-ring"></div>
+                </div>
+
+                <!-- Custom Controls Overlay -->
+                <div class="player-controls" id="player-controls">
+                    <!-- Top bar: title + close -->
+                    <div class="controls-top">
+                        <span class="player-title" id="player-title"></span>
+                        <div class="player-actions">
+                            <button class="ctrl-btn danger-btn" id="delete-player-btn" title="Delete video">🗑️</button>
+                            <button class="ctrl-btn" id="close-player" title="Close">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- Bottom group: progress + controls stay together -->
+                    <div class="controls-footer">
+                        <!-- Progress bar -->
+                        <div class="progress-track" id="progress-track">
+                            <div class="progress-buffered" id="progress-buffered"></div>
+                            <div class="progress-played" id="progress-played"></div>
+                            <div class="progress-thumb" id="progress-thumb"></div>
+                        </div>
+
+                        <!-- Bottom bar: all controls -->
+                        <div class="controls-bottom">
+                            <div class="controls-left">
+                                <button class="ctrl-btn" id="play-pause-btn" title="Play">▶</button>
+                                <button class="ctrl-btn" id="rewind-btn" title="Rewind 10s">⏪ 10</button>
+                                <button class="ctrl-btn" id="forward-btn" title="Forward 10s">10 ⏩</button>
+
+                                <!-- Volume -->
+                                <div class="volume-group">
+                                    <button class="ctrl-btn" id="mute-btn" title="Mute">🔊</button>
+                                    <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="1" class="range-slider volume-slider">
+                                </div>
+
+                                <span class="time-display" id="time-display">0:00 / 0:00</span>
+                            </div>
+
+                            <div class="controls-right">
+                                <!-- Speed -->
+                                <div class="dropdown-group">
+                                    <button class="ctrl-btn dropdown-trigger" id="speed-btn">1× Speed</button>
+                                    <div class="dropdown-menu" id="speed-menu">
+                                        <button data-speed="0.25">0.25×</button>
+                                        <button data-speed="0.5">0.5×</button>
+                                        <button data-speed="0.75">0.75×</button>
+                                        <button data-speed="1" class="active">1× (Normal)</button>
+                                        <button data-speed="1.25">1.25×</button>
+                                        <button data-speed="1.5">1.5×</button>
+                                        <button data-speed="2">2×</button>
+                                    </div>
+                                </div>
+
+                                <!-- Quality -->
+                                <div class="dropdown-group">
+                                    <button class="ctrl-btn dropdown-trigger" id="quality-btn">Auto Quality</button>
+                                    <div class="dropdown-menu" id="quality-menu">
+                                        <button data-level="-1" class="active">Auto</button>
+                                    </div>
+                                </div>
+
+                                <!-- Fullscreen -->
+                                <button class="ctrl-btn" id="fullscreen-btn" title="Fullscreen">⛶</button>
+                            </div>
+                        </div>
+                    </div><!-- /controls-footer -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Library View -->
+        <div id="library-view">
+            <!-- Stats Bar -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-label">Total Videos</div>
+                    <div class="stat-value" id="total-videos">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Storage Used</div>
+                    <div class="stat-value" id="storage-used">0 MB</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Telegram Files</div>
+                    <div class="stat-value" id="telegram-files">0</div>
+                </div>
+            </div>
+
+            <!-- Videos Table -->
+            <div class="database-container">
+                <div class="database-header">
+                    <h2 class="database-title">Video Database</h2>
+                    <div class="database-actions">
+                        <input type="text" id="search-input" class="search-input" placeholder="Search videos...">
+                        <button class="netflix-btn secondary-btn" id="refresh-btn" title="Refresh">⟳ Refresh</button>
+                    </div>
+                </div>
+                
+                <div class="table-wrapper">
+                    <table class="video-table">
+                        <thead>
+                            <tr>
+                                <th>Thumbnail</th>
+                                <th>Video Name</th>
+                                <th>Size</th>
+                                <th>Upload Date</th>
+                                <th>Chunks</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="videos-table-body">
+                            <!-- Rows injected here -->
+                            <tr><td colspan="6" class="loading-row">Loading database...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="empty-database" class="hidden empty-state">
+                    <div class="empty-icon">📦</div>
+                    <p>No videos in database. Click 'Upload' to add your first video!</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Share Link Modal -->
+    <div id="share-modal" class="modal hidden">
+        <div class="modal-content share-modal-content">
+            <button class="close-btn" id="close-share">&times;</button>
+            <h2>🔗 Share Video Link</h2>
+            <p class="subtitle">Paste this link anywhere (Discord, WhatsApp, etc.)</p>
+            
+            <div class="link-tabs">
+                <button class="link-tab active" data-tab="embed">Embed Link</button>
+                <button class="link-tab" data-tab="app">App Link</button>
+            </div>
+            
+            <div class="link-display">
+                <input type="text" id="share-link-input" readonly class="share-link-input">
+                <button class="netflix-btn primary-btn" id="copy-link-btn" title="Copy to clipboard">📋 Copy</button>
+            </div>
+            
+            <div class="link-info">
+                <span id="link-type-label">✓ Works in all apps • Auto-plays video</span>
+            </div>
+            
+            <div class="qr-code-container">
+                <div id="qr-code"></div>
+                <p class="qr-hint">Scan QR code to open on mobile</p>
+            </div>
+            
+            <div class="share-actions">
+                <button class="netflix-btn secondary-btn" id="open-link-btn">🌐 Open Link</button>
+                <button class="netflix-btn primary-btn" id="play-from-link-btn">▶ Play Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" class="modal hidden">
+        <div class="modal-content rename-modal-content">
+            <button class="close-btn" id="close-rename">&times;</button>
+            <h2>✏️ Rename Video</h2>
+            <p class="subtitle">Update the video name without re-uploading</p>
+            
+            <div class="rename-form-group">
+                <label for="rename-input">New Video Name:</label>
+                <input type="text" id="rename-input" class="rename-input" placeholder="Enter new video name">
+                <p class="rename-hint">Include file extension if you want it to appear in the name (e.g., .mp4, .mkv)</p>
+            </div>
+            
+            <div class="rename-actions">
+                <button class="netflix-btn secondary-btn" id="cancel-rename-btn">Cancel</button>
+                <button class="netflix-btn primary-btn" id="save-rename-btn">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

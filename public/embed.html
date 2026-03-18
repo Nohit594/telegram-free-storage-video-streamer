@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamFlix - Watch Video</title>
+    
+    <!-- Open Graph Meta Tags for Social Media -->
+    <meta property="og:type" content="video.other">
+    <meta property="og:title" content="Watch on StreamFlix">
+    <meta property="og:description" content="Stream this video directly">
+    <meta property="og:image" content="">
+    <meta property="og:url" content="">
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:title" content="Watch on StreamFlix">
+    <meta name="twitter:description" content="Stream this video directly">
+    
+    <!-- HLS.js for Streaming -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+        
+        .player-wrapper {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .player-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: #000;
+        }
+        
+        #hls-player {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #e50914;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .play-button-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            background: rgba(229, 9, 20, 0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+            z-index: 20;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .play-button-overlay:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            background: rgba(229, 9, 20, 1);
+        }
+        
+        .play-button-overlay::before {
+            content: '▶';
+            font-size: 32px;
+            color: #fff;
+            margin-left: 4px;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .error-message {
+            color: #fff;
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 30;
+        }
+        
+        .error-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #e50914;
+        }
+        
+        .error-text {
+            color: #ccc;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-wrapper">
+        <div class="player-container">
+            <div class="loading-overlay" id="loader">
+                <div class="spinner"></div>
+            </div>
+            <div class="play-button-overlay hidden" id="play-button"></div>
+            <video id="hls-player" preload="auto" playsinline></video>
+            <div class="error-message hidden" id="error-message">
+                <h2 class="error-title">Video Not Found</h2>
+                <p class="error-text">The video you're trying to watch is not available or has been removed.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const videoElement = document.getElementById('hls-player');
+            const loader = document.getElementById('loader');
+            const errorMessage = document.getElementById('error-message');
+            const playButton = document.getElementById('play-button');
+            
+            // Get video ID from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const videoId = urlParams.get('v');
+            
+            if (!videoId) {
+                showError('No video ID provided');
+                return;
+            }
+            
+            // Update meta tags with video info
+            updateMetaTags(videoId);
+            
+            // Load and play the video
+            loadVideo(videoId);
+            
+            // Play button click handler
+            playButton.addEventListener('click', () => {
+                videoElement.play().catch(err => console.error('Play error:', err));
+                playButton.classList.add('hidden');
+            });
+            
+            // Video state handlers
+            videoElement.addEventListener('play', () => {
+                playButton.classList.add('hidden');
+            });
+            
+            videoElement.addEventListener('pause', () => {
+                playButton.classList.remove('hidden');
+            });
+            
+            async function updateMetaTags(videoId) {
+                try {
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`/api/videos/${videoId}${token ? '?token=' + token : ''}`);
+                    if (res.ok) {
+                        const video = await res.json();
+                        const videoTitle = video.filename?.replace(/\.[^/.]+$/, '') || 'StreamFlix Video';
+                        const thumbnailUrl = `/api/videos/thumbnail/${videoId}`;
+                        
+                        document.title = `${videoTitle} - StreamFlix`;
+                        document.querySelector('meta[property="og:title"]').content = videoTitle;
+                        document.querySelector('meta[property="og:image"]').content = `${window.location.origin}${thumbnailUrl}`;
+                        document.querySelector('meta[property="og:url"]').content = window.location.href;
+                    }
+                } catch (err) {
+                    console.error('Failed to update meta tags:', err);
+                }
+            }
+            
+            async function loadVideo(videoId) {
+                try {
+                    const token = localStorage.getItem('token');
+                    const m3u8Url = `/api/videos/stream/${videoId}/master.m3u8${token ? '?token=' + token : ''}`;
+                    
+                    if (Hls.isSupported()) {
+                        const hls = new Hls({
+                            capLevelToPlayerSize: true,
+                            maxBufferLength: 30,
+                            autoStartLoad: true,
+                            xhrSetup: (xhr, url) => {
+                                // Add token to all HLS segment requests
+                                if (token) {
+                                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                                }
+                            }
+                        });
+                        
+                        hls.loadSource(m3u8Url);
+                        hls.attachMedia(videoElement);
+                        
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            loader.classList.add('hidden');
+                            
+                            // Try to auto-play
+                            videoElement.play().then(() => {
+                                // Auto-play succeeded
+                                playButton.classList.add('hidden');
+                            }).catch(err => {
+                                // Auto-play prevented by browser - show play button
+                                console.log('Auto-play prevented, showing play button');
+                                playButton.classList.remove('hidden');
+                            });
+                        });
+                        
+                        hls.on(Hls.Events.ERROR, (event, data) => {
+                            if (data.fatal) {
+                                loader.classList.add('hidden');
+                                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                                    showError('Network error - video may not be available');
+                                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                                    showError('Media error - cannot play video');
+                                } else {
+                                    showError('Failed to load video');
+                                }
+                            }
+                        });
+                    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                        videoElement.src = m3u8Url;
+                        videoElement.addEventListener('loadedmetadata', () => {
+                            loader.classList.add('hidden');
+                            
+                            // Try to auto-play
+                            videoElement.play().then(() => {
+                                playButton.classList.add('hidden');
+                            }).catch(err => {
+                                // Auto-play prevented - show play button
+                                playButton.classList.remove('hidden');
+                            });
+                        });
+                        
+                        videoElement.addEventListener('error', () => {
+                            loader.classList.add('hidden');
+                            showError('Failed to load video');
+                        });
+                    } else {
+                        showError('Your browser does not support HLS streaming');
+                    }
+                } catch (error) {
+                    console.error('Error loading video:', error);
+                    loader.classList.add('hidden');
+                    showError('Video not found or unavailable');
+                }
+            }
+            
+            function showError(message) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.querySelector('.error-text').textContent = message;
+            }
+            
+            // Handle keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === ' ' || e.key === 'k') {
+                    e.preventDefault();
+                    if (videoElement.paused) {
+                        videoElement.play();
+                    } else {
+                        videoElement.pause();
+                    }
+                } else if (e.key === 'f') {
+                    toggleFullscreen();
+                } else if (e.key === 'm') {
+                    videoElement.muted = !videoElement.muted;
+                }
+            });
+            
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+            
+            // Click to toggle fullscreen
+            document.querySelector('.player-container').addEventListener('dblclick', toggleFullscreen);
+            
+            // Click to play/pause
+            videoElement.addEventListener('click', () => {
+                if (videoElement.paused) {
+                    videoElement.play();
+                } else {
+                    videoElement.pause();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
