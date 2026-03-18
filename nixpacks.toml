@@ -1,0 +1,6 @@
+[build]
+providers = ["node"]
+
+[build.apt]
+pkgs = ["ffmpeg"]
+
