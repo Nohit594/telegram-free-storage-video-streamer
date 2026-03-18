@@ -752,8 +752,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressThumb    = document.getElementById('progress-thumb');
     const speedBtn         = document.getElementById('speed-btn');
     const speedMenu        = document.getElementById('speed-menu');
-    const qualityBtn       = document.getElementById('quality-btn');
-    const qualityMenu      = document.getElementById('quality-menu');
     const fullscreenBtn    = document.getElementById('fullscreen-btn');
     const playerTitleEl    = document.getElementById('player-title');
 
@@ -919,31 +917,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
                 playerLoader.classList.add('hidden');
-
-                qualityMenu.innerHTML = '<button data-level="-1" class="active">Auto</button>';
-                data.levels.forEach((level, i) => {
-                    const label = level.height ? `${level.height}p` : `Level ${i}`;
-                    const btn = document.createElement('button');
-                    btn.dataset.level = i;
-                    btn.textContent = label;
-                    btn.addEventListener('click', () => {
-                        hlsInstance.currentLevel = i;
-                        qualityBtn.textContent = label;
-                        qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        btn.closest('.dropdown-group').classList.remove('open');
-                    });
-                    qualityMenu.appendChild(btn);
-                });
-
-                qualityMenu.querySelector('[data-level="-1"]').addEventListener('click', () => {
-                    hlsInstance.currentLevel = -1;
-                    qualityBtn.textContent = 'Auto Quality';
-                    qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                    qualityMenu.querySelector('[data-level="-1"]').classList.add('active');
-                    qualityMenu.closest('.dropdown-group').classList.remove('open');
-                });
-
                 videoElement.play().catch(() => {});
             });
 
