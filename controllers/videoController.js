@@ -3,23 +3,7 @@ const hlsService = require('../services/hlsService');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-
-const dataFile = path.join(__dirname, '../data/videos.json');
-
-if (!fs.existsSync(path.join(__dirname, '../data'))) {
-    fs.mkdirSync(path.join(__dirname, '../data'));
-}
-if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, '[]');
-}
-
-const getStoredVideos = () => {
-    return JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-};
-
-const saveVideos = (videos) => {
-    fs.writeFileSync(dataFile, JSON.stringify(videos, null, 2));
-};
+const Video = require('../models/Video');
 
 exports.uploadVideo = async (req, res) => {
     let localFilePath = null;
@@ -133,7 +117,7 @@ exports.uploadVideo = async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 500));
         }
 
-        // 6. Save metadata
+        // 6. Save metadata to MongoDB
         sendProgress('finalizing', 95, 'Saving metadata...');
         
         // Ensure user is authenticated
@@ -141,8 +125,7 @@ exports.uploadVideo = async (req, res) => {
             throw new Error('User not authenticated');
         }
         
-        const videos = getStoredVideos();
-        const videoData = {
+        const videoData = new Video({
             id: hlsData.uniqueId,
             userId: req.user.id,  // Link video to authenticated user
             filename: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
@@ -154,11 +137,13 @@ exports.uploadVideo = async (req, res) => {
             uploadTime: new Date().toISOString(),
             originalSize: req.file.size,
             isPublic: false  // New videos are private by default
-        };
-        videos.push(videoData);
-        saveVideos(videos);
+        });
+
+        await videoData.save();
+
+        const videoCount = await Video.countDocuments({ userId: req.user.id });
         console.log(`Video saved successfully: ${videoData.filename} (ID: ${videoData.id}) for user ${videoData.userId}`);
-        console.log(`Total videos in database: ${videos.length}`);
+        console.log(`User has ${videoCount} videos in database`);
 
         // 7. Cleanup local files
         cleanupTempFiles(localFilePath, thumbPath, hlsData.hlsFolder);
@@ -189,11 +174,10 @@ function cleanupTempFiles(videoPath, thumbPath, hlsFolder) {
     } catch(e) { console.error("Error during cleanup:", e.message); }
 }
 
-exports.getVideos = (req, res) => {
+exports.getVideos = async (req, res) => {
     try {
-        const allVideos = getStoredVideos();
-        // Filter videos to only show user's own videos
-        const userVideos = allVideos.filter(video => video.userId === req.user.id);
+        // Fetch all videos for the authenticated user from MongoDB
+        const userVideos = await Video.find({ userId: req.user.id }).sort({ uploadTime: -1 });
         console.log(`User ${req.user.id} has ${userVideos.length} videos`);
         res.json(userVideos);
     } catch (error) {
@@ -202,18 +186,17 @@ exports.getVideos = (req, res) => {
     }
 };
 
-exports.getVideoById = (req, res) => {
+exports.getVideoById = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const videos = getStoredVideos();
-        const video = videos.find(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
         
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });
         }
         
         // Check ownership - user can only access their own videos
-        if (video.userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
         
@@ -224,7 +207,7 @@ exports.getVideoById = (req, res) => {
     }
 };
 
-exports.renameVideo = (req, res) => {
+exports.renameVideo = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const { filename } = req.body;
@@ -233,26 +216,26 @@ exports.renameVideo = (req, res) => {
             return res.status(400).json({ error: 'Filename is required' });
         }
         
-        const videos = getStoredVideos();
-        const videoIndex = videos.findIndex(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
         
-        if (videoIndex === -1) {
+        if (!video) {
             return res.status(404).json({ error: 'Video not found' });
         }
         
         // Check ownership
-        if (videos[videoIndex].userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
         
         // Update the filename
-        videos[videoIndex].filename = filename.trim();
-        saveVideos(videos);
+        video.filename = filename.trim();
+        video.updatedAt = new Date();
+        await video.save();
         
         console.log(`Video ${videoId} renamed to: ${filename}`);
         res.json({ 
             message: 'Video renamed successfully',
-            video: videos[videoIndex]
+            video: video
         });
     } catch (error) {
         console.error('Rename error:', error);
@@ -260,31 +243,29 @@ exports.renameVideo = (req, res) => {
     }
 };
 
-exports.togglePrivacy = (req, res) => {
+exports.togglePrivacy = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const videos = getStoredVideos();
-        const videoIndex = videos.findIndex(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
         
-        if (videoIndex === -1) {
+        if (!video) {
             return res.status(404).json({ error: 'Video not found' });
         }
         
         // Check ownership
-        if (videos[videoIndex].userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
         
-        // Toggle the isPublic flag (default to false/private if not set)
-        const currentStatus = videos[videoIndex].isPublic !== true;
-        videos[videoIndex].isPublic = !currentStatus;
+        // Toggle the isPublic flag
+        video.isPublic = !video.isPublic;
+        video.updatedAt = new Date();
+        await video.save();
         
-        saveVideos(videos);
-        
-        console.log(`Video ${videoId} privacy toggled to: ${videos[videoIndex].isPublic ? 'PUBLIC' : 'PRIVATE'}`);
+        console.log(`Video ${videoId} privacy toggled to: ${video.isPublic ? 'PUBLIC' : 'PRIVATE'}`);
         res.json({ 
             message: 'Video privacy toggled successfully',
-            video: videos[videoIndex]
+            video: video
         });
     } catch (error) {
         console.error('Toggle privacy error:', error);
@@ -295,11 +276,12 @@ exports.togglePrivacy = (req, res) => {
 exports.getThumbnail = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const video = getStoredVideos().find(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
+        
         if (!video || !video.thumbnailFileId) return res.status(404).end();
         
         // Check ownership
-        if (video.userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).end();
         }
         
@@ -317,14 +299,14 @@ exports.getThumbnail = async (req, res) => {
 exports.getPlaylist = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const video = getStoredVideos().find(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
 
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });
         }
         
         // Check ownership
-        if (video.userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
@@ -356,12 +338,12 @@ exports.getPlaylist = async (req, res) => {
 exports.getChunk = async (req, res) => {
     try {
         const { videoId, chunkName } = req.params;
-        const video = getStoredVideos().find(v => v.id === videoId);
+        const video = await Video.findOne({ id: videoId });
 
         if (!video) return res.status(404).json({ error: 'Video not found' });
         
         // Check ownership
-        if (video.userId !== req.user.id) {
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
@@ -389,14 +371,13 @@ exports.getChunk = async (req, res) => {
 exports.deleteVideo = async (req, res) => {
     try {
         const videoId = req.params.videoId;
-        const videos = getStoredVideos();        
-        // Find video and check ownership
-        const videoIndex = videos.findIndex(v => v.id === videoId);
-        if (videoIndex === -1) {
+        const video = await Video.findOne({ id: videoId });
+
+        if (!video) {
             return res.status(404).json({ error: 'Video not found' });
         }
-        const video = videos[videoIndex];
-        if (video.userId !== req.user.id) {
+
+        if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
 
@@ -430,9 +411,8 @@ exports.deleteVideo = async (req, res) => {
         
         console.log(`Deleted ${deletedCount}/${video.chunks.length} chunks from Telegram`);
 
-        // Remove from local storage
-        videos.splice(videoIndex, 1);
-        saveVideos(videos);
+        // Remove from MongoDB
+        await Video.deleteOne({ id: videoId });
 
         console.log(`Video ${videoId} deleted successfully`);
         res.json({ message: 'Video deleted successfully', videoId });
