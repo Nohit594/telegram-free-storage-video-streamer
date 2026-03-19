@@ -118,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const playerModal = document.getElementById('player-modal');
     const closePlayerBtn = document.getElementById('close-player');
-    const deletePlayerBtn = document.getElementById('delete-player-btn');
     const videoElement = document.getElementById('hls-player');
     const playerLoader = document.getElementById('player-loader');
 
@@ -1159,36 +1158,4 @@ document.addEventListener('DOMContentLoaded', () => {
     playerModal.addEventListener('click', (e) => {
         if (e.target === playerModal) closePlayer();
     });
-
-    deletePlayerBtn.addEventListener('click', () => {
-        if (currentVideoId) {
-            deleteVideo(currentVideoId);
-        }
-    });
-
-    async function deleteVideo(videoId) {
-        const confirmed = confirm('Are you sure you want to delete this video? This will remove it from both the app and Telegram. This action cannot be undone!');
-        if (!confirmed) return;
-
-        try {
-            const res = await fetch(`/api/videos/${videoId}`, {
-                method: 'DELETE',
-                headers: getAuthHeaders()
-            });
-
-            const data = await res.json();
-
-            if (res.ok) {
-                alert('Video deleted successfully!');
-                fetchVideos();
-            } else {
-                alert('Failed to delete video: ' + (data.error || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Delete error:', error);
-            alert('Failed to delete video. Please try again later.');
-        }
-    }
-
-    window.deleteVideo = deleteVideo;
-});
+})
