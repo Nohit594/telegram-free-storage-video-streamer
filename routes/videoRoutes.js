@@ -34,12 +34,14 @@ router.get('/', authMiddleware, videoController.getVideos);
 // Public routes (no auth required) - for shared videos
 router.get('/public/thumbnail/:videoId', videoController.getThumbnail);
 router.get('/public/stream/:videoId/master.m3u8', videoController.getPlaylist);
+router.get('/public/stream/:videoId/asset', videoController.getAsset);
 router.get('/public/stream/:videoId/chunk/:chunkName', videoController.getChunk);
 router.get('/public/:videoId', videoController.getVideoById);
 
 // Protected routes (auth required)
 router.get('/thumbnail/:videoId', authMiddleware, videoController.getThumbnail);
 router.get('/stream/:videoId/master.m3u8', authMiddleware, videoController.getPlaylist);
+router.get('/stream/:videoId/asset', authMiddleware, videoController.getAsset);
 router.get('/stream/:videoId/chunk/:chunkName', authMiddleware, videoController.getChunk);
 router.delete('/:videoId', authMiddleware, videoController.deleteVideo);
 router.get('/:videoId', authMiddleware, videoController.getVideoById);

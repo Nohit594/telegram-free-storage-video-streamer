@@ -657,6 +657,14 @@ body {
     user-select: none;
 }
 
+.toggle-status-text.active-private {
+    color: #e50914;
+}
+
+.toggle-status-text.active-public {
+    color: #4caf50;
+}
+
 /* Active private label (left) */
 .toggle-switch input:not(:checked) ~ .toggle-knob + .toggle-public-label,
 .toggle-row:has(input:not(:checked)) .toggle-status-text:first-child {
@@ -681,6 +689,10 @@ body {
     width: 0;
     height: 0;
     position: absolute;
+}
+.toggle-switch input:disabled + .toggle-knob {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 .toggle-knob {
     position: absolute;

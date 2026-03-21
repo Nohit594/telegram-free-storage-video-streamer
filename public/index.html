@@ -60,12 +60,12 @@
             </form>
 
             <div id="upload-progress-container" class="hidden">
-                <p id="progress-status-text">Uploading to Server...</p>
+                <p id="progress-status-text">0%</p>
                 <div class="progress-bar-bg">
                     <div id="progress-bar" class="progress-fill"></div>
                 </div>
                 <!-- Warning note because FFmpeg conversion blocking -->
-                <p class="processing-note">Note: Large videos may take several minutes to chunk and upload to Telegram. Do not close this window.</p>
+                <p class="processing-note">Note: Large videos may take several minutes to chunk and upload to our cloud. Do not close this window.</p>
             </div>
         </div>
     </div>
@@ -188,7 +188,7 @@
                     <div class="stat-value" id="storage-used">0 MB</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Telegram Files</div>
+                    <div class="stat-label">Cloud Files</div>
                     <div class="stat-value" id="telegram-files">0</div>
                 </div>
             </div>
@@ -267,7 +267,7 @@
                                 <input type="checkbox" id="privacy-toggle-btn">
                                 <span class="toggle-knob"></span>
                             </label>
-                            <span class="toggle-status-text toggle-public-label">Public</span>
+                            <span class="toggle-status-text toggle-public-label" id="privacy-public-text">Public</span>
                         </div>
                     </div>
                     <p class="privacy-hint" id="privacy-hint-text">Only you (when logged in) can watch this video.</p>

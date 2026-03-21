@@ -13,8 +13,8 @@ A modern, full-featured video storage and streaming application that stores vide
 
 ### 📹 Video Management
 - **Upload Videos**: Support for files up to 1GB
-- **HLS Streaming**: Adaptive bitrate streaming for smooth playback
-- **Video Quality**: Multiple quality options (Auto, 1080p, 720p, etc.)
+- **HLS Streaming**: Adaptive bitrate streaming (ABR) with master playlist
+- **Video Quality**: 1080p, 720p, 480p, 360p + Auto
 - **Rename Videos**: Change video names without re-uploading
 - **Delete Videos**: Permanently remove videos from storage
 - **Search**: Full-text search for videos in database
@@ -28,11 +28,18 @@ A modern, full-featured video storage and streaming application that stores vide
 - **No Auth Required**: Shared links don't require login to view
 
 ### 💾 Storage Management
-- **Telegram Storage**: Videos stored directly in Telegram channel
-- **Chunked Upload**: Large files split into manageable 5MB chunks
+- **Telegram-Only Storage**: HLS master/variant playlists and segments stored in Telegram
+- **HLS Asset Upload**: Uploads all `.m3u8` and `.ts` files as Telegram documents
 - **Thumbnail Generation**: Auto-generated video thumbnails
 - **Storage Stats**: Real-time storage usage information
 - **Telegram File Count**: Track number of files in Telegram
+
+### 🧠 Processing Pipeline
+- Upload video with `multer`
+- FFmpeg transcodes into 6 variants: 1080p → 144p (no 2K/4K)
+- FFmpeg generates `master.m3u8` + variant playlists + segments
+- Backend uploads thumbnail and all HLS assets to Telegram
+- Player consumes `master.m3u8` and switches quality automatically/manually via HLS.js
 
 ### 🎛️ Video Player
 - **Playback Controls**: Play, pause, seek, mute, volume
@@ -79,6 +86,9 @@ A modern, full-featured video storage and streaming application that stores vide
    # Telegram (optional, for storage)
    TELEGRAM_BOT_TOKEN=your_bot_token
    TELEGRAM_CHAT_ID=your_chat_id
+
+   # Optional edge proxy for segment caching
+   CLOUDFLARE_WORKER_URL=https://your-worker.example.workers.dev
    
    # Server
    PORT=3000
@@ -220,7 +230,10 @@ Database → Find video → Click Delete → Confirm → Video removed from all 
 - `GET /api/videos` - List all videos (protected)
 - `POST /api/videos/upload` - Upload video (protected)
 - `GET /api/videos/:videoId` - Get video info (protected)
-- `GET /api/videos/:videoId/stream/:filename` - Stream HLS segment (protected)
+- `GET /api/videos/stream/:videoId/master.m3u8` - Get rewritten master playlist (protected)
+- `GET /api/videos/public/stream/:videoId/master.m3u8` - Get rewritten master playlist (public)
+- `GET /api/videos/stream/:videoId/asset?path=<relativePath>` - Stream variant playlist/segment (protected)
+- `GET /api/videos/public/stream/:videoId/asset?path=<relativePath>` - Stream variant playlist/segment (public)
 - `GET /api/videos/thumbnail/:videoId` - Get thumbnail (protected)
 - `DELETE /api/videos/:videoId` - Delete video (protected)
 - `PUT /api/videos/:videoId/rename` - Rename video (protected)

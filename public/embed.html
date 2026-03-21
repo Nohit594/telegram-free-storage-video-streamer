@@ -323,6 +323,47 @@
         .speed-menu button:hover { background: rgba(255,255,255,0.08); color: #fff; }
         .speed-menu button.active { color: #e50914; font-weight: 600; }
 
+        .quality-wrap { position: relative; }
+        .quality-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .quality-label:hover { background: rgba(255,255,255,0.12); }
+        .quality-menu {
+            position: absolute;
+            bottom: calc(100% + 6px);
+            right: 0;
+            background: rgba(18,18,18,0.97);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 6px 0;
+            min-width: 120px;
+            display: none;
+            flex-direction: column;
+            z-index: 50;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+        }
+        .quality-wrap.open .quality-menu { display: flex; }
+        .quality-menu button {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.75);
+            padding: 8px 14px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.15s, color 0.15s;
+        }
+        .quality-menu button:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .quality-menu button.active { color: #e50914; font-weight: 600; }
+
         /* ── Error ── */
         .error-message {
             position: absolute; inset: 0;
@@ -432,6 +473,13 @@
                     </div>
                 </div>
 
+                <div class="quality-wrap" id="quality-wrap">
+                    <div class="quality-label" id="quality-label">Auto</div>
+                    <div class="quality-menu" id="quality-menu">
+                        <button data-level="-1" class="active">Auto</button>
+                    </div>
+                </div>
+
                 <!-- PiP -->
                 <button class="ctrl icon-sm" id="pip-btn" title="Picture in Picture">
                     <svg viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H3V5h18v14z"/></svg>
@@ -487,7 +535,11 @@
         const speedWrap     = document.getElementById('speed-wrap');
         const speedLabel    = document.getElementById('speed-label');
         const speedMenu     = document.getElementById('speed-menu');
+        const qualityWrap   = document.getElementById('quality-wrap');
+        const qualityLabel  = document.getElementById('quality-label');
+        const qualityMenu   = document.getElementById('quality-menu');
         const videoTitleEl  = document.getElementById('video-title');
+        let hlsInstance = null;
 
         // ── Get video ID ──
         const params  = new URLSearchParams(window.location.search);
@@ -597,7 +649,74 @@
                 speedWrap.classList.remove('open');
             });
         });
-        document.addEventListener('click', () => speedWrap.classList.remove('open'));
+        document.addEventListener('click', () => {
+            speedWrap.classList.remove('open');
+            qualityWrap.classList.remove('open');
+        });
+
+        qualityLabel.addEventListener('click', e => {
+            e.stopPropagation();
+            qualityWrap.classList.toggle('open');
+        });
+
+        function updateQualityLabel() {
+            if (!hlsInstance) {
+                qualityLabel.textContent = 'Auto';
+                return;
+            }
+
+            if (hlsInstance.currentLevel === -1) {
+                const current = hlsInstance.levels[hlsInstance.loadLevel] || hlsInstance.levels[hlsInstance.nextLevel];
+                qualityLabel.textContent = current?.height ? `Auto (${current.height}p)` : 'Auto';
+                return;
+            }
+
+            const selected = hlsInstance.levels[hlsInstance.currentLevel] || hlsInstance.levels[hlsInstance.nextLevel];
+            qualityLabel.textContent = selected?.height ? `${selected.height}p` : 'Manual';
+        }
+
+        function setupQualityMenu(levels) {
+            qualityMenu.innerHTML = '';
+
+            const autoBtn = document.createElement('button');
+            autoBtn.textContent = 'Auto';
+            autoBtn.dataset.level = '-1';
+            autoBtn.classList.add('active');
+            autoBtn.addEventListener('click', () => {
+                if (!hlsInstance) return;
+                hlsInstance.currentLevel = -1;
+                qualityMenu.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+                autoBtn.classList.add('active');
+                updateQualityLabel();
+                qualityWrap.classList.remove('open');
+            });
+            qualityMenu.appendChild(autoBtn);
+
+            const seenHeights = new Set();
+            levels
+                .map((level, index) => ({ level, index }))
+                .sort((a, b) => (b.level.height || 0) - (a.level.height || 0))
+                .forEach(({ level, index }) => {
+                    const height = level.height;
+                    if (!height || seenHeights.has(height)) return;
+                    seenHeights.add(height);
+
+                    const btn = document.createElement('button');
+                    btn.textContent = `${height}p`;
+                    btn.dataset.level = String(index);
+                    btn.addEventListener('click', () => {
+                        if (!hlsInstance) return;
+                        hlsInstance.currentLevel = index;
+                        qualityMenu.querySelectorAll('button').forEach(item => item.classList.remove('active'));
+                        btn.classList.add('active');
+                        updateQualityLabel();
+                        qualityWrap.classList.remove('open');
+                    });
+                    qualityMenu.appendChild(btn);
+                });
+
+            updateQualityLabel();
+        }
 
         // ── PiP ──
         pipBtn.addEventListener('click', () => {
@@ -678,7 +797,7 @@
                 const m3u8   = `/api/videos/public/stream/${id}/master.m3u8`
 
                 if (Hls.isSupported()) {
-                    const hls = new Hls({
+                    hlsInstance = new Hls({
                         capLevelToPlayerSize: true,
                         maxBufferLength: 30,
                         autoStartLoad: true,
@@ -688,16 +807,17 @@
                     });
                     
                     // Load and attach video
-                    hls.loadSource(m3u8);
-                    hls.attachMedia(video);
+                    hlsInstance.loadSource(m3u8);
+                    hlsInstance.attachMedia(video);
                     
                     // Hide loader when first fragment is buffered (backup)
-                    hls.on(Hls.Events.FRAG_BUFFERED, () => {
+                    hlsInstance.on(Hls.Events.FRAG_BUFFERED, () => {
                         setTimeout(() => loader.classList.add('hidden'), 500);
                     }, { once: true });
                     
                     // Handle manifest parsed - actually play the video
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    hlsInstance.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+                        setupQualityMenu(data.levels || []);
                         video.play().then(() => {
                             setPlayState(true);
                             loader.classList.add('hidden');
@@ -707,8 +827,12 @@
                             loader.classList.add('hidden');
                         });
                     });
+
+                    hlsInstance.on(Hls.Events.LEVEL_SWITCHED, () => {
+                        updateQualityLabel();
+                    });
                     
-                    hls.on(Hls.Events.ERROR, (_, data) => {
+                    hlsInstance.on(Hls.Events.ERROR, (_, data) => {
                         if (data.fatal) {
                             showError(data.type === Hls.ErrorTypes.NETWORK_ERROR
                                 ? 'Network error — video may not be available'

@@ -1,194 +1,171 @@
-const telegramService = require('../services/telegramService');
 const hlsService = require('../services/hlsService');
+const storageService = require('../services/storageService');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const Video = require('../models/Video');
 
-// Helper function to check video access
+const MASTER_PLAYLIST_NAME = 'master.m3u8';
+
 const canAccessVideo = (video, req) => {
-    // If video is public, anyone can access
     if (video.isPublic) return true;
-    // If user is authenticated and owns the video, they can access
     if (req.user && video.userId.toString() === req.user.id) return true;
-    // Otherwise, no access
     return false;
 };
 
-exports.uploadVideo = async (req, res) => {
-    let localFilePath = null;
-    let hlsData = null;
-    let thumbPath = null;
-    
-    // Set timeout to be very long for FFmpeg processing
+function sendSse(res, payload) {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function ensureSseHeaders(req, res) {
     req.setTimeout(0);
-    
-    // Set response headers for Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-
-    try {
-        if (!req.file) {
-            console.error('No file uploaded');
-            res.write(`data: ${JSON.stringify({ error: 'No video file uploaded' })}\n\n`);
-            return res.end();
-        }
-
-        console.log(`File received: ${req.file.originalname} (${req.file.size} bytes)`);
-        const totalSize = req.file.size;
-        let uploadedBytes = 0;
-        let totalBytes = 0;
-
-        // Calculate total bytes to upload (thumbnail + playlist + all chunks)
-        const calculateTotalBytes = () => {
-            return new Promise((resolve) => {
-                let bytes = 0;
-                // Thumbnail size estimate
-                bytes += 50000; // ~50KB thumbnail
-                
-                // Read HLS files
-                if (hlsData?.hlsFolder && fs.existsSync(hlsData.hlsFolder)) {
-                    const files = fs.readdirSync(hlsData.hlsFolder);
-                    files.forEach(file => {
-                        const filePath = path.join(hlsData.hlsFolder, file);
-                        bytes += fs.statSync(filePath).size;
-                    });
-                }
-                resolve(bytes);
-            });
-        };
-
-        localFilePath = req.file.path;
-        console.log(`Starting HLS conversion for ${localFilePath}...`);
-
-        // Send progress event helper
-        const sendProgress = (phase, percent, message) => {
-            if (req.socket && !req.socket.destroyed) {
-                res.write(`data: ${JSON.stringify({ phase, percent, message })}\n\n`);
-            }
-        };
-
-        // 1. Convert video to HLS and generate thumbnail
-        sendProgress('converting', 5, 'Converting to HLS format...');
-        
-        [hlsData, thumbPath] = await Promise.all([
-            hlsService.convertToHLS(localFilePath),
-            hlsService.generateThumbnail(localFilePath)
-        ]);
-
-        sendProgress('converting', 20, 'HLS conversion complete, preparing upload...');
-
-        // 2. Read all files in the HLS output folder
-        const files = fs.readdirSync(hlsData.hlsFolder);
-        const tsFiles = files.filter(f => f.endsWith('.ts')).sort();
-        const m3u8File = files.find(f => f.endsWith('.m3u8'));
-
-        // Calculate total upload size
-        totalBytes = await calculateTotalBytes();
-        console.log(`Total upload size: ${(totalBytes / (1024*1024)).toFixed(2)} MB`);
-
-        // 3. Upload thumbnail
-        sendProgress('uploading', 25, 'Uploading thumbnail...');
-        const thumbResult = await telegramService.sendPhoto(thumbPath);
-        const thumbFileId = thumbResult.fileId;
-        uploadedBytes += fs.statSync(thumbPath).size;
-
-        // 4. Upload m3u8 playlist file
-        sendProgress('uploading', 30, 'Uploading playlist file...');
-        const playlistPath = path.join(hlsData.hlsFolder, m3u8File);
-        const playlistResult = await telegramService.sendDocument(playlistPath);
-        const playlistFileId = playlistResult.fileId;
-        uploadedBytes += fs.statSync(playlistPath).size;
-
-        // 5. Upload all TS chunks sequentially
-        sendProgress('uploading', 35, `Uploading video chunks (0/${tsFiles.length})...`);
-        
-        const chunkFileIds = [];
-        for (let i = 0; i < tsFiles.length; i++) {
-            const fileName = tsFiles[i];
-            const chunkPath = path.join(hlsData.hlsFolder, fileName);
-            console.log(`Uploading chunk: ${fileName}`);
-            
-            const chunkResult = await telegramService.sendDocument(chunkPath);
-            chunkFileIds.push({
-                name: fileName,
-                fileId: chunkResult.fileId,
-                messageId: chunkResult.messageId  // Store message ID for deletion
-            });
-            
-            uploadedBytes += fs.statSync(chunkPath).size;
-            
-            // Calculate progress percentage
-            const uploadPercent = 35 + ((uploadedBytes / totalBytes) * 60); // 35% to 95%
-            sendProgress('uploading', Math.min(uploadPercent, 95), `Uploading video chunks (${i + 1}/${tsFiles.length})...`);
-
-            // Optional: small delay to prevent telegram rate limits 429
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        // 6. Save metadata to MongoDB
-        sendProgress('finalizing', 95, 'Saving metadata...');
-        
-        // Ensure user is authenticated
-        if (!req.user || !req.user.id) {
-            throw new Error('User not authenticated');
-        }
-        
-        const videoData = new Video({
-            id: hlsData.uniqueId,
-            userId: req.user.id,  // Link video to authenticated user
-            filename: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
-            thumbnailFileId: thumbResult.fileId,
-            thumbnailMessageId: thumbResult.messageId,
-            playlistFileId: playlistResult.fileId,
-            playlistMessageId: playlistResult.messageId,
-            chunks: chunkFileIds,
-            uploadTime: new Date().toISOString(),
-            originalSize: req.file.size,
-            isPublic: false  // New videos are private by default
-        });
-
-        await videoData.save();
-
-        const videoCount = await Video.countDocuments({ userId: req.user.id });
-        console.log(`Video saved successfully: ${videoData.filename} (ID: ${videoData.id}) for user ${videoData.userId}`);
-        console.log(`User has ${videoCount} videos in database`);
-
-        // 7. Cleanup local files
-        cleanupTempFiles(localFilePath, thumbPath, hlsData.hlsFolder);
-
-        res.write(`data: ${JSON.stringify({ success: true, video: videoData })}\n\n`);
-        res.end();
-    } catch (error) {
-        console.error("Upload process failed:", error);
-        console.error("Error details:", error.stack);
-        cleanupTempFiles(localFilePath, thumbPath, hlsData?.hlsFolder);
-        
-        res.write(`data: ${JSON.stringify({ error: error.message || 'Upload failed' })}\n\n`);
-        res.end();
-    }
-};
+}
 
 function cleanupTempFiles(videoPath, thumbPath, hlsFolder) {
     try {
         if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (thumbPath && fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
-        if (hlsFolder && fs.existsSync(hlsFolder)) {
-            const files = fs.readdirSync(hlsFolder);
-            for (const file of files) {
-                fs.unlinkSync(path.join(hlsFolder, file));
-            }
-            fs.rmdirSync(hlsFolder);
-        }
-    } catch(e) { console.error("Error during cleanup:", e.message); }
+        if (hlsFolder && fs.existsSync(hlsFolder)) fs.rmSync(hlsFolder, { recursive: true, force: true });
+    } catch (error) {
+        console.error('Cleanup warning:', error.message);
+    }
 }
+
+function rewriteMasterPlaylist(content, videoId, isPublicRoute) {
+    const basePath = isPublicRoute
+        ? `/api/videos/public/stream/${videoId}/asset?path=`
+        : `/api/videos/stream/${videoId}/asset?path=`;
+
+    return content
+        .split('\n')
+        .map((line) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return line;
+            return `${basePath}${encodeURIComponent(trimmed)}`;
+        })
+        .join('\n');
+}
+
+function rewriteVariantPlaylist(content, videoId, variantPath, isPublicRoute) {
+    const basePath = isPublicRoute
+        ? `/api/videos/public/stream/${videoId}/asset?path=`
+        : `/api/videos/stream/${videoId}/asset?path=`;
+
+    const variantDir = path.posix.dirname(variantPath);
+
+    return content
+        .split('\n')
+        .map((line) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return line;
+            const absoluteAssetPath = path.posix.normalize(path.posix.join(variantDir, trimmed));
+            return `${basePath}${encodeURIComponent(absoluteAssetPath)}`;
+        })
+        .join('\n');
+}
+
+exports.uploadVideo = async (req, res) => {
+    let localFilePath = null;
+    let hlsData = null;
+    let thumbPath = null;
+
+    ensureSseHeaders(req, res);
+
+    try {
+        if (!req.file) {
+            sendSse(res, { error: 'No video file uploaded' });
+            return res.end();
+        }
+
+        if (!req.user || !req.user.id) {
+            sendSse(res, { error: 'User not authenticated' });
+            return res.end();
+        }
+
+        localFilePath = req.file.path;
+        sendSse(res, { phase: 'converting', percent: 2, message: 'Starting FFmpeg pipeline...' });
+
+        const conversionPromise = hlsService.convertToHLS(localFilePath, {
+            onProgress: (percent, timemark) => {
+                const mapped = 5 + (Math.min(100, percent) * 0.6);
+                sendSse(res, {
+                    phase: 'converting',
+                    percent: Math.round(mapped),
+                    message: timemark
+                        ? `Encoding adaptive streams (${timemark})...`
+                        : 'Encoding adaptive streams...'
+                });
+            }
+        });
+
+        const thumbnailPromise = hlsService.generateThumbnail(localFilePath);
+
+        [hlsData, thumbPath] = await Promise.all([conversionPromise, thumbnailPromise]);
+
+        sendSse(res, { phase: 'storing', percent: 70, message: 'Uploading HLS assets to Telegram...' });
+
+        const storageResult = await storageService.storeArtifacts({
+            hlsFolder: hlsData.hlsFolder,
+            thumbPath,
+            onProgress: ({ percent, message }) => {
+                const mapped = 70 + (Math.min(100, percent) * 0.25);
+                sendSse(res, {
+                    phase: 'storing',
+                    percent: Math.round(mapped),
+                    message
+                });
+            }
+        });
+
+        const masterAsset = (storageResult.assets || []).find((asset) => asset.path === MASTER_PLAYLIST_NAME);
+        const chunkAssets = (storageResult.assets || []).filter((asset) => asset.path.endsWith('.ts'));
+
+        sendSse(res, { phase: 'finalizing', percent: 96, message: 'Saving metadata...' });
+
+        const videoData = new Video({
+            id: hlsData.uniqueId,
+            userId: req.user.id,
+            filename: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+            storageProvider: 'telegram',
+            thumbnailFileId: storageResult.thumbnailFileId,
+            thumbnailMessageId: storageResult.thumbnailMessageId,
+            masterPlaylistPath: MASTER_PLAYLIST_NAME,
+            assets: storageResult.assets,
+            variants: hlsData.variants,
+            availableQualities: hlsData.variants.map((variant) => variant.name),
+            durationSeconds: hlsData.durationSeconds || undefined,
+            playlistFileId: masterAsset?.fileId,
+            playlistMessageId: masterAsset?.messageId,
+            chunks: chunkAssets.map((asset) => ({
+                name: asset.path,
+                fileId: asset.fileId,
+                messageId: asset.messageId
+            })),
+            uploadTime: new Date().toISOString(),
+            originalSize: req.file.size,
+            isPublic: false
+        });
+
+        await videoData.save();
+
+        cleanupTempFiles(localFilePath, thumbPath, hlsData.hlsFolder);
+
+        sendSse(res, { success: true, video: videoData, percent: 100, message: 'Upload complete' });
+        res.end();
+    } catch (error) {
+        console.error('Upload process failed:', error);
+        cleanupTempFiles(localFilePath, thumbPath, hlsData?.hlsFolder);
+        sendSse(res, { error: error.message || 'Upload failed' });
+        res.end();
+    }
+};
 
 exports.getVideos = async (req, res) => {
     try {
-        // Fetch all videos for the authenticated user from MongoDB
         const userVideos = await Video.find({ userId: req.user.id }).sort({ uploadTime: -1 });
-        console.log(`User ${req.user.id} has ${userVideos.length} videos`);
         res.json(userVideos);
     } catch (error) {
         console.error('Error fetching videos:', error);
@@ -200,16 +177,10 @@ exports.getVideoById = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const video = await Video.findOne({ id: videoId });
-        
-        if (!video) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-        
-        // Check if video is public OR user owns it
-        if (!canAccessVideo(video, req)) {
-            return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
-        }
-        
+
+        if (!video) return res.status(404).json({ error: 'Video not found' });
+        if (!canAccessVideo(video, req)) return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
+
         res.json(video);
     } catch (error) {
         console.error('Get video error:', error);
@@ -221,32 +192,23 @@ exports.renameVideo = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const { filename } = req.body;
-        
+
         if (!filename || !filename.trim()) {
             return res.status(400).json({ error: 'Filename is required' });
         }
-        
+
         const video = await Video.findOne({ id: videoId });
-        
-        if (!video) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-        
-        // Check ownership
+
+        if (!video) return res.status(404).json({ error: 'Video not found' });
         if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
-        
-        // Update the filename
+
         video.filename = filename.trim();
         video.updatedAt = new Date();
         await video.save();
-        
-        console.log(`Video ${videoId} renamed to: ${filename}`);
-        res.json({ 
-            message: 'Video renamed successfully',
-            video: video
-        });
+
+        res.json({ message: 'Video renamed successfully', video });
     } catch (error) {
         console.error('Rename error:', error);
         res.status(500).json({ error: 'Failed to rename video' });
@@ -257,26 +219,17 @@ exports.togglePrivacy = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const video = await Video.findOne({ id: videoId });
-        
-        if (!video) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-        
-        // Check ownership
+
+        if (!video) return res.status(404).json({ error: 'Video not found' });
         if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
-        
-        // Toggle the isPublic flag
+
         video.isPublic = !video.isPublic;
         video.updatedAt = new Date();
         await video.save();
-        
-        console.log(`Video ${videoId} privacy toggled to: ${video.isPublic ? 'PUBLIC' : 'PRIVATE'}`);
-        res.json({ 
-            message: 'Video privacy toggled successfully',
-            video: video
-        });
+
+        res.json({ message: 'Video privacy toggled successfully', video });
     } catch (error) {
         console.error('Toggle privacy error:', error);
         res.status(500).json({ error: 'Failed to toggle video privacy' });
@@ -287,96 +240,84 @@ exports.getThumbnail = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const video = await Video.findOne({ id: videoId });
-        
+
         if (!video || !video.thumbnailFileId) return res.status(404).end();
-        
-        // Check if video is public OR user owns it
-        if (!canAccessVideo(video, req)) {
-            return res.status(403).end();
-        }
-        
-        const telegramFile = await telegramService.getFileUrl(video.thumbnailFileId);
-        
-        // Proxy the image directly
-        const response = await axios.get(telegramFile.url, { responseType: 'stream' });
+        if (!canAccessVideo(video, req)) return res.status(403).end();
+
+        const telegramUrl = await storageService.getTelegramThumbnailProxyUrl(video);
+        const response = await axios.get(telegramUrl, { responseType: 'stream' });
         response.data.pipe(res);
-    } catch(e) {
-        console.error('Thumbnail error:', e.message);
+    } catch (error) {
+        console.error('Thumbnail error:', error.message);
         res.status(500).end();
     }
 };
 
-// Returns the m3u8 playlist file, dynamically rewriting the TS chunk URLs to point to our proxy
 exports.getPlaylist = async (req, res) => {
     try {
         const videoId = req.params.videoId;
         const video = await Video.findOne({ id: videoId });
 
-        if (!video) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-        
-        // Check if video is public OR user owns it
-        if (!canAccessVideo(video, req)) {
-            return res.status(403).json({ error: 'Unauthorized' });
-        }
+        if (!video) return res.status(404).json({ error: 'Video not found' });
+        if (!canAccessVideo(video, req)) return res.status(403).json({ error: 'Unauthorized' });
 
-        const telegramFile = await telegramService.getFileUrl(video.playlistFileId);
-        
-        const response = await axios.get(telegramFile.url);
-        let m3u8Content = response.data;
-
-        // The m3u8 file contains filenames like `segment_000.ts`.
-        // We replace them with absolute paths to our chunk proxy endpoint.
-        // e.g., `/api/videos/stream/VIDEO_ID/chunk/segment_000.ts`
-        
-        // We can just replace the .ts filename string with our routing URL
-        video.chunks.forEach(chunk => {
-            const proxyUrl = `/api/videos/public/stream/${videoId}/chunk/${chunk.name}`;
-            m3u8Content = m3u8Content.replace(chunk.name, proxyUrl);
-        });
+        const isPublicRoute = req.path.includes('/public/');
+        const masterPath = video.masterPlaylistPath || MASTER_PLAYLIST_NAME;
+        const rawMaster = await storageService.getAssetText(video, masterPath);
+        const rewritten = rewriteMasterPlaylist(rawMaster, videoId, isPublicRoute);
 
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        res.send(m3u8Content);
-
+        res.send(rewritten);
     } catch (error) {
         console.error('Playlist error:', error.message);
         res.status(500).json({ error: 'Failed to fetch playlist' });
     }
 };
 
-// Redirects the chunk request to Cloudflare Worker, keeping Bot Token hidden!
-exports.getChunk = async (req, res) => {
+exports.getAsset = async (req, res) => {
     try {
-        const { videoId, chunkName } = req.params;
+        const videoId = req.params.videoId;
+        const requestedAssetPath = req.query.path;
+
+        if (!requestedAssetPath) {
+            return res.status(400).json({ error: 'Asset path is required' });
+        }
+
+        const assetPath = storageService.sanitizeRelativePath(requestedAssetPath);
         const video = await Video.findOne({ id: videoId });
 
         if (!video) return res.status(404).json({ error: 'Video not found' });
-        
-        // Check if video is public OR user owns it
-        if (!canAccessVideo(video, req)) {
-            return res.status(403).json({ error: 'Unauthorized' });
+        if (!canAccessVideo(video, req)) return res.status(403).json({ error: 'Unauthorized' });
+
+        if (assetPath.endsWith('.m3u8')) {
+            const isPublicRoute = req.path.includes('/public/');
+            const playlistContent = await storageService.getAssetText(video, assetPath);
+            const rewritten = rewriteVariantPlaylist(playlistContent, videoId, assetPath, isPublicRoute);
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+            return res.send(rewritten);
         }
 
-        const chunk = video.chunks.find(c => c.name === chunkName);
-        if (!chunk) return res.status(404).json({ error: 'Chunk not found' });
-
-        // Get fresh temporary Telegram URL
-        const telegramFile = await telegramService.getFileUrl(chunk.fileId);
-        
+        const telegramAssetUrl = await storageService.getTelegramAssetProxyUrl(video, assetPath);
         const workerUrl = process.env.CLOUDFLARE_WORKER_URL;
-        if (!workerUrl) throw new Error("Cloudflare worker URL not configured");
 
-        // Redirect client to Cloudflare Worker edge cache
-        const targetUrl = new URL(workerUrl);
-        targetUrl.searchParams.set('url', telegramFile.url);
+        if (workerUrl) {
+            const targetUrl = new URL(workerUrl);
+            targetUrl.searchParams.set('url', telegramAssetUrl);
+            return res.redirect(302, targetUrl.toString());
+        }
 
-        res.redirect(302, targetUrl.toString());
-
+        return res.redirect(302, telegramAssetUrl);
     } catch (error) {
-        console.error('Chunk streaming error:', error.message);
-        res.status(500).json({ error: 'Failed to proxy chunk' });
+        console.error('Asset streaming error:', error.message);
+        res.status(500).json({ error: 'Failed to stream asset' });
     }
+};
+
+exports.getChunk = async (req, res) => {
+    const { videoId, chunkName } = req.params;
+    req.query.path = chunkName;
+    req.params.videoId = videoId;
+    return exports.getAsset(req, res);
 };
 
 exports.deleteVideo = async (req, res) => {
@@ -384,48 +325,14 @@ exports.deleteVideo = async (req, res) => {
         const videoId = req.params.videoId;
         const video = await Video.findOne({ id: videoId });
 
-        if (!video) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-
+        if (!video) return res.status(404).json({ error: 'Video not found' });
         if (video.userId.toString() !== req.user.id) {
             return res.status(403).json({ error: 'Unauthorized - this video belongs to another user' });
         }
 
-        // Delete all chunks from Telegram
-        console.log(`Deleting video ${videoId} from Telegram...`);
-        
-        // Delete thumbnail message (use messageId if available, otherwise skip)
-        if (video.thumbnailMessageId) {
-            await telegramService.deleteFile(video.thumbnailMessageId);
-        } else if (video.thumbnailFileId) {
-            console.log('Thumbnail message ID not available, skipping deletion');
-        }
-
-        // Delete playlist file message
-        if (video.playlistMessageId) {
-            await telegramService.deleteFile(video.playlistMessageId);
-        } else if (video.playlistFileId) {
-            console.log('Playlist message ID not available, skipping deletion');
-        }
-
-        // Delete all TS chunk messages
-        let deletedCount = 0;
-        for (const chunk of video.chunks) {
-            if (chunk.messageId) {
-                await telegramService.deleteFile(chunk.messageId);
-                deletedCount++;
-            } else if (chunk.fileId) {
-                console.log(`Chunk ${chunk.name} message ID not available, skipping`);
-            }
-        }
-        
-        console.log(`Deleted ${deletedCount}/${video.chunks.length} chunks from Telegram`);
-
-        // Remove from MongoDB
+        await storageService.deleteTelegramAssets(video);
         await Video.deleteOne({ id: videoId });
 
-        console.log(`Video ${videoId} deleted successfully`);
         res.json({ message: 'Video deleted successfully', videoId });
     } catch (error) {
         console.error('Delete error:', error.message);

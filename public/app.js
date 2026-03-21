@@ -132,6 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const linkTabs = document.querySelectorAll('.link-tab');
     const linkTypeLabel = document.getElementById('link-type-label');
     const privacyToggleBtn = document.getElementById('privacy-toggle-btn');
+    const privacyPrivateText = document.getElementById('privacy-status-text');
+    const privacyPublicText = document.getElementById('privacy-public-text');
     
     // Rename modal elements
     const renameModal = document.getElementById('rename-modal');
@@ -277,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadBtn.classList.add('disabled');
         videoInput.disabled = true;
         progressContainer.classList.remove('hidden');
-        progressText.textContent = 'Uploading to Server...';
+        progressText.textContent = '0%';
         progressBar.style.width = '0%';
         progressBar.style.background = '#4a90e2';
 
@@ -287,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.lengthComputable) {
                 const percentComplete = Math.round((e.loaded / e.total) * 30);
                 progressBar.style.width = percentComplete + '%';
+                progressText.textContent = percentComplete + '%';
                 console.log(`File upload progress: ${percentComplete}%`);
             }
         });
@@ -334,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             if (data.success) {
                                 console.log('Upload successful!');
-                                progressText.textContent = 'Upload Complete!';
+                                progressText.textContent = '100%';
                                 progressBar.style.background = '#2ea043';
                                 progressBar.style.width = '100%';
                                 
@@ -349,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (data.percent !== undefined) {
                                 const mappedPercent = 30 + (data.percent / 100) * 70;
                                 progressBar.style.width = mappedPercent + '%';
-                                progressText.textContent = data.message || 'Processing...';
+                                progressText.textContent = `${Math.round(mappedPercent)}%`;
                                 
                                 if (data.phase === 'converting') {
                                     progressBar.style.background = '#e5a909';
@@ -358,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 } else if (data.phase === 'finalizing') {
                                     progressBar.style.background = '#4a90e2';
                                 }
-                                console.log(`Progress: ${mappedPercent.toFixed(1)}% - ${data.message}`);
+                                console.log(`Progress: ${mappedPercent.toFixed(1)}%`);
                             }
                         } catch (err) {
                             console.log('SSE parse error:', err, 'Line:', line);
@@ -536,6 +539,44 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function deleteVideo(videoId) {
+        const targetVideo = allVideos.find(v => v.id === videoId);
+        const targetName = targetVideo?.filename || 'this video';
+
+        const confirmed = confirm(`Delete ${targetName}? This action cannot be undone.`);
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch(`/api/videos/${videoId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                alert(data.error || 'Failed to delete video');
+                return;
+            }
+
+            if (currentVideoId === videoId) {
+                closePlayer();
+            }
+
+            allVideos = allVideos.filter(v => v.id !== videoId);
+            const searchTerm = searchInput.value.trim().toLowerCase();
+            if (searchTerm) {
+                renderTable(allVideos.filter(v => v.filename.toLowerCase().includes(searchTerm)));
+            } else {
+                renderTable(allVideos);
+            }
+            updateStats(allVideos);
+        } catch (error) {
+            console.error('Delete video error:', error);
+            alert('Failed to delete video. Please try again.');
+        }
+    }
+
     // Search functionality
     searchInput.addEventListener('input', (e) => {
         const searchTerm = e.target.value.toLowerCase();
@@ -571,10 +612,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function updatePrivacyButton(video) {
         const isPublic = video.isPublic === true;
-        privacyToggleBtn.checked = isPublic; // Set checkbox state
-        privacyToggleBtn.textContent = isPublic ? '🔓 Public' : '🔒 Private';
-        privacyToggleBtn.classList.remove('public', 'private');
-        privacyToggleBtn.classList.add(isPublic ? 'public' : 'private');
+        privacyToggleBtn.checked = isPublic;
+
+        if (privacyPrivateText) {
+            privacyPrivateText.classList.toggle('active-private', !isPublic);
+            privacyPrivateText.classList.toggle('active-public', false);
+        }
+
+        if (privacyPublicText) {
+            privacyPublicText.classList.toggle('active-public', isPublic);
+            privacyPublicText.classList.toggle('active-private', false);
+        }
         
         const hintEl = document.getElementById('privacy-hint-text');
         if (hintEl) {
@@ -673,11 +721,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             if (response.ok) {
-                const updatedVideo = await response.json();
+                const result = await response.json();
+                const updatedVideo = result.video || result;
                 const videoIndex = allVideos.findIndex(v => v.id === currentShareVideoId);
                 if (videoIndex !== -1) {
-                    allVideos[videoIndex].isPublic = updatedVideo.isPublic;
-                    updatePrivacyButton(updatedVideo);
+                    allVideos[videoIndex].isPublic = !!updatedVideo.isPublic;
+                    updatePrivacyButton(allVideos[videoIndex]);
                 }
             } else {
                 // Revert checkbox on failure

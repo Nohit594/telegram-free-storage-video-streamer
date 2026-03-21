@@ -25,17 +25,44 @@ const videoSchema = new mongoose.Schema({
   },
   playlistFileId: {
     type: String,
-    required: true,
+    required: false,
   },
   playlistMessageId: {
     type: Number,
-    required: true,
+    required: false,
   },
   chunks: [{
     name: String,
     fileId: String,
     messageId: Number,
   }],
+  storageProvider: {
+    type: String,
+    enum: ['telegram'],
+    default: 'telegram',
+  },
+  assets: [{
+    path: String,
+    fileId: String,
+    messageId: Number,
+    size: Number,
+  }],
+  masterPlaylistPath: {
+    type: String,
+    default: 'master.m3u8',
+  },
+  variants: [{
+    index: Number,
+    name: String,
+    width: Number,
+    height: Number,
+    videoBitrate: String,
+    audioBitrate: String,
+    bandwidth: Number,
+    playlistPath: String,
+  }],
+  availableQualities: [String],
+  durationSeconds: Number,
   uploadTime: {
     type: Date,
     default: Date.now,
